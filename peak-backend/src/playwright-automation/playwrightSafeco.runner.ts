@@ -107,6 +107,7 @@ type SafecoPayload = {
 };
 
 const SAFECO_POLICY_INFO_URL = "https://personal.safeco.com/Personal/home/PolicyInfo.aspx?ModeID=2";
+const SAFECO_PORTAL_TIMEZONE = String(process.env.SAFECO_PORTAL_TIMEZONE ?? "America/Los_Angeles").trim() || "America/Los_Angeles";
 
 const STATE_NAME_BY_CODE: Record<string, string> = {
   AL: "Alabama",
@@ -391,8 +392,8 @@ function normalizeSafecoPayload(raw: unknown): SafecoPayload {
     return toStringArray(pickRaw(...keys));
   };
 
-  const safecoTodayEt = formatDateInTimeZone(new Date(), "America/New_York");
-  const fallbackQuoteDate = safecoTodayEt;
+  const safecoPortalToday = formatDateInTimeZone(new Date(), SAFECO_PORTAL_TIMEZONE);
+  const fallbackQuoteDate = safecoPortalToday;
   const fallbackEffectiveDate = formatTodayPlusDays(7);
   const fallbackOwnershipDate = new Date();
   const defaultOwnershipMonth = fallbackOwnershipDate.toLocaleString("en-US", { month: "long" });
@@ -409,7 +410,7 @@ function normalizeSafecoPayload(raw: unknown): SafecoPayload {
       "40-0591",
     quoteDate: clampMmDdYyyyToMax(
       toMmDdYyyy(pickString("quoteSetup.quoteDate"), fallbackQuoteDate),
-      safecoTodayEt,
+      safecoPortalToday,
     ),
     effectiveDate: toMmDdYyyy(
       pickString("quoteSetup.effectiveDate", "insuranceDetails.effectiveDate"),
@@ -530,7 +531,7 @@ function hasQuoteDateFutureValidation(items: string[]): boolean {
 }
 
 async function forceSafecoQuoteDateToToday(page: Page): Promise<void> {
-  const todayEt = formatDateInTimeZone(new Date(), "America/New_York");
+  const todayPortal = formatDateInTimeZone(new Date(), SAFECO_PORTAL_TIMEZONE);
   const quoteDateSelectors = ["#PolicyQuoteDate", 'input[id*="PolicyQuoteDate"]', 'input[id*="QuoteDate"]'];
   for (const selector of quoteDateSelectors) {
     const input = page.locator(selector).first();
@@ -542,7 +543,7 @@ async function forceSafecoQuoteDateToToday(page: Page): Promise<void> {
       })
       .catch(() => false);
     if (!editable) continue;
-    await input.fill(todayEt).catch(() => undefined);
+    await input.fill(todayPortal).catch(() => undefined);
     await input.dispatchEvent("input").catch(() => undefined);
     await input.dispatchEvent("change").catch(() => undefined);
     await input.dispatchEvent("blur").catch(() => undefined);
@@ -1315,6 +1316,25 @@ async function anyChecked(page: Page, selectors: string[]): Promise<boolean> {
   return false;
 }
 
+async function setRadioByNameValueFast(page: Page, name: string, value: "Y" | "N"): Promise<boolean> {
+  const radio = page.locator(`input[type="radio"][name="${name}"][value="${value}"]`).first();
+  if (!(await radio.count().catch(() => 0))) return false;
+
+  await radio
+    .evaluate((el) => {
+      const input = el as HTMLInputElement;
+      input.click();
+      input.checked = true;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    })
+    .catch(() => undefined);
+
+  return radio.isChecked().catch(async () =>
+    radio.evaluate((el) => Boolean((el as HTMLInputElement).checked)).catch(() => false),
+  );
+}
+
 async function forceSelectAdditionalInterestsExact(page: Page, value: "Yes" | "No"): Promise<boolean> {
   const suffix = value === "Yes" ? "Y" : "N";
   const inputId = `#PolicyAdditionalInterestsYN${suffix}`;
@@ -1370,7 +1390,13 @@ async function isAdditionalInterestsValueSelected(page: Page, value: "Yes" | "No
 
 async function selectAdditionalInterests(page: Page, value: "Yes" | "No"): Promise<void> {
   if (await isAdditionalInterestsValueSelected(page, value)) return;
-  await closeSafecoModal(page);
+  const quickSelected = await setRadioByNameValueFast(
+    page,
+    "PolicyAdditionalInterestsYN",
+    value === "Yes" ? "Y" : "N",
+  );
+  if (quickSelected) return;
+
   if (await forceSelectAdditionalInterestsExact(page, value).catch(() => false)) return;
 
   const suffix = value === "Yes" ? "Y" : "N";
@@ -1398,6 +1424,49 @@ async function selectAdditionalInterests(page: Page, value: "Yes" | "No"): Promi
   if (await isAdditionalInterestsValueSelected(page, value)) return;
 
   throw new Error(`[Safeco] Could not select Additional Interests as "${value}".`);
+}
+
+async function selectLossesYesNoRequired(page: Page, value: "Yes" | "No"): Promise<void> {
+  const suffix = value === "Yes" ? "Y" : "N";
+  const fastNames = [
+    "PolicyDwellingLossesYN",
+    "PolicyLossesYN",
+    "PolicyDwellingAnyLossesYN",
+    "PolicySPILossesYN",
+    "PolicyDwellingPriorLossesYN",
+  ];
+
+  for (const name of fastNames) {
+    const ok = await setRadioByNameValueFast(page, name, suffix);
+    if (ok) return;
+  }
+
+  try {
+    await clickYesNo(
+      page,
+      ["PolicyDwellingLossesYN", "PolicyLossesYN", "PolicyDwellingAnyLossesYN", "PolicySPILossesYN", "PolicyDwellingPriorLossesYN"],
+      value,
+    );
+    return;
+  } catch {
+    // Continue to fallbacks.
+  }
+
+  const clickedByText = await clickYesNoByQuestionText(
+    page,
+    /number of losses incurred in the last 5 years|losses incurred in the last 5 years|loss(es)? in the last 5 years|prior losses/i,
+    value,
+  ).catch(() => false);
+  if (clickedByText) return;
+
+  const clickedByFragments = await clickYesNoByNameFragments(
+    page,
+    ["Losses", "SPILosses", "DwellingLosses", "PriorLosses", "AnyLosses"],
+    value,
+  );
+  if (clickedByFragments) return;
+
+  throw new Error(`[Safeco] Could not select losses Yes/No as "${value}" using known selectors and fallbacks.`);
 }
 
 function parsePhoneParts(phoneRaw: string): { area: string; prefix: string; suffix: string } | null {
@@ -2136,7 +2205,7 @@ export async function runSafecoPlaywright(
     const context = await browser.newContext({
       acceptDownloads: true,
       locale: "en-US",
-      timezoneId: "America/New_York",
+      timezoneId: SAFECO_PORTAL_TIMEZONE,
       viewport: { width: 1366, height: 900 },
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -2420,35 +2489,7 @@ export async function runSafecoPlaywright(
     const normalizedLossCount = normalizeLossCount(payload.underwriting.lossesLastFiveYears);
     const lossCountNum = Number(normalizedLossCount);
     const lossesAnswer: "Yes" | "No" = lossCountNum > 0 ? "Yes" : "No";
-    try {
-      await clickYesNo(
-        page,
-        [
-          "PolicyDwellingLossesYN",
-          "PolicyLossesYN",
-          "PolicyDwellingAnyLossesYN",
-          "PolicySPILossesYN",
-          "PolicyDwellingPriorLossesYN",
-        ],
-        lossesAnswer,
-      );
-    } catch {
-      const clickedByText = await clickYesNoByQuestionText(
-        page,
-        /number of losses incurred in the last 5 years|losses incurred in the last 5 years|loss(es)? in the last 5 years|prior losses/i,
-        lossesAnswer,
-      ).catch(() => false);
-      if (!clickedByText) {
-        const clickedByFragments = await clickYesNoByNameFragments(
-          page,
-          ["Losses", "SPILosses", "DwellingLosses", "PriorLosses", "AnyLosses"],
-          lossesAnswer,
-        );
-        if (!clickedByFragments) {
-          throw new Error(`[Safeco] Could not select losses Yes/No as "${lossesAnswer}" using known selectors and fallbacks.`);
-        }
-      }
-    }
+    await selectLossesYesNoRequired(page, lossesAnswer);
     await setLossCountRequired(page, normalizedLossCount);
     if (lossesAnswer === "Yes") {
       const lossDetailSelectors = ["#PolicySPILosses1LossDate", "#PolicySPILosses1LossAmount", "#PolicySPILosses1LossCategory"];

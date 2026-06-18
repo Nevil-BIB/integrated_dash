@@ -567,6 +567,26 @@
           "required": true
         },
         {
+          "key": "underwriting.lossDate",
+          "label": "Date of Loss",
+          "type": "date",
+          "required": true,
+          "conditionalOn": {
+            "key": "underwriting.lossesLastFiveYears",
+            "notValue": "0"
+          }
+        },
+        {
+          "key": "underwriting.lossAmount",
+          "label": "Amount of Loss",
+          "type": "text",
+          "required": true,
+          "conditionalOn": {
+            "key": "underwriting.lossesLastFiveYears",
+            "notValue": "0"
+          }
+        },
+        {
           "key": "underwriting.lossCause",
           "label": "Cause of Loss",
           "type": "dropdown",
@@ -661,8 +681,25 @@
         {
           "key": "dwellingInformation.roofMaterial",
           "label": "Roof Material",
-          "type": "text",
-          "required": false
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Shingles, Asphalt",
+            "Shingles, Architectural",
+            "Shakes, Wood/Vict Scalloped",
+            "Tar & Gravel",
+            "Steel",
+            "Shingles, Wood",
+            "Tile, Clay/Concrete/Mission",
+            "Slate",
+            "Rolled Rubber",
+            "Tin",
+            "Aluminum, Standing Seam",
+            "Hail Proof",
+            "Copper",
+            "Foam",
+            "Plexiglas"
+          ]
         },
         {
           "key": "dwellingInformation.roofRenovation",
@@ -692,7 +729,7 @@
           "key": "dwellingInformation.plumbingRenovationYear",
           "label": "Plumbing Renovation Year",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "dwellingInformation.plumbingRenovation",
             "notValue": "None"

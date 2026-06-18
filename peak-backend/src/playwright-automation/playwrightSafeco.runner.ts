@@ -82,6 +82,8 @@ type SafecoUnderwriting = {
   insuranceCancellationExplanation?: string;
   lossesLastFiveYears: string;
   lossCause?: string;
+  lossDate?: string;
+  lossAmount?: string;
   ownershipMonth: string;
   ownershipYear: string;
   hasOtherSafecoPolicy?: "Yes" | "No";
@@ -267,6 +269,14 @@ function normalizeStateLabel(value: string | undefined): string | undefined {
   const maybeCode = clean.toUpperCase();
   if (STATE_NAME_BY_CODE[maybeCode]) return STATE_NAME_BY_CODE[maybeCode];
   return clean;
+}
+
+function normalizeLooseText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/aluminium/g, "aluminum")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function toMmDdYyyy(value: string | undefined, fallback: string): string {
@@ -503,6 +513,8 @@ function normalizeSafecoPayload(raw: unknown): SafecoPayload {
     ),
     lossesLastFiveYears: pickString("underwriting.lossesLastFiveYears", "insuranceDetails.numberOfLosses5Years") ?? "0",
     lossCause: pickString("underwriting.lossCause"),
+    lossDate: toMmDdYyyy(pickString("underwriting.lossDate"), ""),
+    lossAmount: pickString("underwriting.lossAmount"),
     ownershipMonth: pickString("underwriting.ownershipMonth") ?? defaultOwnershipMonth,
     ownershipYear: pickString("underwriting.ownershipYear") ?? defaultOwnershipYear,
     hasOtherSafecoPolicy: pickYesNo("underwriting.hasOtherSafecoPolicy"),
@@ -733,9 +745,7 @@ async function fillSafecoHistoryIfVisible(
   page: Page,
   opts?: { sinceDate?: string; policyNumber?: string; notYetIssued?: "Yes" | "No" },
 ): Promise<void> {
-  const todayPortal = formatDateInTimeZone(new Date(), SAFECO_PORTAL_TIMEZONE);
-  const [mm, , yyyy] = todayPortal.split("/");
-  const fallbackSinceDate = opts?.sinceDate?.trim() || `${mm}/01/${String(Number(yyyy) - 1)}`;
+  const sinceDate = opts?.sinceDate?.trim();
 
   const sinceSelectors = [
     "#PolicyCustomerSinceDate",
@@ -752,8 +762,8 @@ async function fillSafecoHistoryIfVisible(
     const input = page.locator(selector).first();
     if (!(await input.count().catch(() => 0))) continue;
     const current = await input.inputValue().catch(() => "");
-    if (!current.trim()) {
-      await input.fill(fallbackSinceDate).catch(() => undefined);
+    if (!current.trim() && sinceDate) {
+      await input.fill(sinceDate).catch(() => undefined);
       await input.dispatchEvent("input").catch(() => undefined);
       await input.dispatchEvent("change").catch(() => undefined);
     }
@@ -805,30 +815,41 @@ async function fillSafecoHistoryIfVisible(
 }
 
 async function closeSafecoModal(page: Page): Promise<void> {
-  const modal = page.locator(".modalDialog, .ecdev-MessageModal, .ui-dialog").first();
-  const modalVisible = await modal.isVisible().catch(() => false);
-  if (!modalVisible) return;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const modal = page.locator(".modalDialog, .ecdev-MessageModal, .ui-dialog").first();
+    const modalVisible = await modal.isVisible().catch(() => false);
+    if (!modalVisible) return;
 
-  const closeCandidates = [
-    ".ui-dialog-titlebar-close",
-    "button.ui-dialog-titlebar-close",
-    ".modalDialog .ui-dialog-titlebar-close",
-    ".ecdev-MessageModal .ui-dialog-titlebar-close",
-    'button[aria-label*="Close"]',
-    'button[title*="Close"]',
-    'button:has-text("Close")',
-    'a:has-text("Close")',
-  ];
+    const closeCandidates = [
+      ".ui-dialog-titlebar-close",
+      "button.ui-dialog-titlebar-close",
+      "a.ui-dialog-titlebar-close",
+      ".modalDialog .ui-dialog-titlebar-close",
+      ".ecdev-MessageModal .ui-dialog-titlebar-close",
+      '.ui-dialog:visible a[role="button"]',
+      'button[aria-label*="Close"]',
+      'button[title*="Close"]',
+      'button:has-text("Close")',
+      'a:has-text("Close")',
+      'span:has-text("Esc or Close")',
+    ];
 
-  for (const selector of closeCandidates) {
-    const closeButton = page.locator(selector).first();
-    if (await closeButton.isVisible().catch(() => false)) {
-      await closeButton.click({ force: true }).catch(() => undefined);
-      return;
+    let clicked = false;
+    for (const selector of closeCandidates) {
+      const closeButton = page.locator(selector).first();
+      if (await closeButton.isVisible().catch(() => false)) {
+        await closeButton.click({ force: true }).catch(() => undefined);
+        clicked = true;
+        break;
+      }
     }
-  }
 
-  await page.keyboard.press("Escape").catch(() => undefined);
+    if (!clicked) {
+      await page.keyboard.press("Escape").catch(() => undefined);
+    }
+
+    await page.waitForTimeout(180).catch(() => undefined);
+  }
 }
 
 async function isVisible(page: Page, selector: string): Promise<boolean> {
@@ -889,10 +910,12 @@ async function selectByLabelOrValue(page: Page, selector: string, rawValue: stri
     })),
   );
 
-  const normalized = value.toLowerCase();
-  const match = optionValues.find((opt) => opt.label.trim().toLowerCase() === normalized)
-    ?? optionValues.find((opt) => opt.value.trim().toLowerCase() === normalized)
-    ?? optionValues.find((opt) => opt.label.trim().toLowerCase().includes(normalized));
+  const normalized = normalizeLooseText(value);
+  const match =
+    optionValues.find((opt) => normalizeLooseText(opt.label.trim()) === normalized)
+    ?? optionValues.find((opt) => normalizeLooseText(opt.value.trim()) === normalized)
+    ?? optionValues.find((opt) => normalizeLooseText(opt.label.trim()).includes(normalized))
+    ?? optionValues.find((opt) => normalized.includes(normalizeLooseText(opt.label.trim())));
 
   if (!match) {
     throw new Error(`Could not select ${selector} with value "${value}"`);
@@ -1036,6 +1059,7 @@ async function clickYesNo(page: Page, baseIds: string[], value: "Yes" | "No"): P
 }
 
 async function clickContinue(page: Page): Promise<void> {
+  await closeSafecoModal(page);
   const candidateSelectors = [
     "#Continue",
     "a#Continue",
@@ -1058,64 +1082,24 @@ async function clickContinue(page: Page): Promise<void> {
     page.getByRole("link", { name: /continue|next|save\s*&?\s*continue/i }).first(),
   ];
 
-  for (let retry = 0; retry < 2; retry++) {
-    for (const selector of candidateSelectors) {
-      const locator = page.locator(selector).first();
-      if (await locator.isVisible().catch(() => false)) {
-        await locator.click({ force: true }).catch(() => undefined);
-        const blockedItems = await readSafecoRequiredModalItems(page);
-        if (!blockedItems.length) return;
-        if (retry === 0 && hasQuoteDateFutureValidation(blockedItems)) {
-          await forceSafecoQuoteDateToToday(page);
-          await closeSafecoModal(page);
-          continue;
-        }
-        if (retry === 0 && hasPriorCarrierSafecoValidation(blockedItems)) {
-          await forcePriorCarrierNonSafeco(page);
-          await closeSafecoModal(page);
-          continue;
-        }
-        if (retry === 0 && hasPriorSafecoPolicyFieldsRequiredValidation(blockedItems)) {
-          await forcePriorSafecoHistoryFields(page);
-          await closeSafecoModal(page);
-          continue;
-        }
-        if (retry === 0 && hasPriorSafecoPolicyInvalidValidation(blockedItems)) {
-          await forcePriorSafecoHistoryFields(page);
-          await closeSafecoModal(page);
-          continue;
-        }
-        throw new Error(`[Safeco] Continue blocked by required fields: ${blockedItems.join(" | ")}`);
-      }
+  for (const selector of candidateSelectors) {
+    await closeSafecoModal(page);
+    const locator = page.locator(selector).first();
+    if (await locator.isVisible().catch(() => false)) {
+      await locator.click({ force: true }).catch(() => undefined);
+      const blockedItems = await readSafecoRequiredModalItems(page);
+      if (!blockedItems.length) return;
+      throw new Error(`[Safeco] Continue blocked by required fields: ${blockedItems.join(" | ")}`);
     }
+  }
 
-    for (const locator of semanticLocators) {
-      if (await locator.isVisible().catch(() => false)) {
-        await locator.click({ force: true }).catch(() => undefined);
-        const blockedItems = await readSafecoRequiredModalItems(page);
-        if (!blockedItems.length) return;
-        if (retry === 0 && hasQuoteDateFutureValidation(blockedItems)) {
-          await forceSafecoQuoteDateToToday(page);
-          await closeSafecoModal(page);
-          continue;
-        }
-        if (retry === 0 && hasPriorCarrierSafecoValidation(blockedItems)) {
-          await forcePriorCarrierNonSafeco(page);
-          await closeSafecoModal(page);
-          continue;
-        }
-        if (retry === 0 && hasPriorSafecoPolicyFieldsRequiredValidation(blockedItems)) {
-          await forcePriorSafecoHistoryFields(page);
-          await closeSafecoModal(page);
-          continue;
-        }
-        if (retry === 0 && hasPriorSafecoPolicyInvalidValidation(blockedItems)) {
-          await forcePriorSafecoHistoryFields(page);
-          await closeSafecoModal(page);
-          continue;
-        }
-        throw new Error(`[Safeco] Continue blocked by required fields: ${blockedItems.join(" | ")}`);
-      }
+  for (const locator of semanticLocators) {
+    await closeSafecoModal(page);
+    if (await locator.isVisible().catch(() => false)) {
+      await locator.click({ force: true }).catch(() => undefined);
+      const blockedItems = await readSafecoRequiredModalItems(page);
+      if (!blockedItems.length) return;
+      throw new Error(`[Safeco] Continue blocked by required fields: ${blockedItems.join(" | ")}`);
     }
   }
 
@@ -1236,6 +1220,13 @@ async function ensureUnderwritingSectionReady(page: Page): Promise<void> {
 async function advanceSafecoToSummaryPrint(page: Page): Promise<void> {
   const printSelector = "#btnPrint";
   const intermediateSelectors = [
+    "#PolicyDwellingProtectionClass",
+    "#PolicyDwellingConstructionYear",
+    "#PolicyDwellingConstructionStyle",
+    "#PolicyDwellingDwellingTypeDesc",
+    "#PolicyDwellingRoofs1ID",
+    "#PolicyDwellingRoofingRenovationType",
+    "#PolicyDwellingPlumbingRenovationType",
     "#PolicyDwellingNumberOfBathsFull",
     "#PolicyDwellingNumberOfBathsThreeQuarter",
     "#PolicyDwellingNumberOfBathsHalf",
@@ -1253,39 +1244,19 @@ async function advanceSafecoToSummaryPrint(page: Page): Promise<void> {
   const first = await waitForAnyVisible(
     page,
     [printSelector, ...intermediateSelectors, ...summaryStageSelectors],
-    10000,
+    18000,
   );
   if (first === printSelector) return;
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 24; i++) {
+    await closeSafecoModal(page);
     if (await isVisible(page, printSelector)) return;
-
-    // If bath dropdowns are present and empty, select the first non-empty option dynamically.
-    for (const selector of [
-      "#PolicyDwellingNumberOfBathsFull",
-      "#PolicyDwellingNumberOfBathsThreeQuarter",
-      "#PolicyDwellingNumberOfBathsHalf",
-    ]) {
-      const dropdown = page.locator(selector).first();
-      if (!(await dropdown.isVisible().catch(() => false))) continue;
-      const current = await dropdown.inputValue().catch(() => "");
-      if (current && current.trim()) continue;
-      const firstNonEmpty = await dropdown
-        .locator("option")
-        .evaluateAll((nodes) => {
-          const match = nodes.find((n) => ((n as HTMLOptionElement).value ?? "").trim().length > 0);
-          return match ? (match as HTMLOptionElement).value : "";
-        })
-        .catch(() => "");
-      if (firstNonEmpty) {
-        await dropdown.selectOption({ value: firstNonEmpty }).catch(() => undefined);
-      }
-    }
+    const currentUrl = page.url().toLowerCase();
 
     const stageMarker = await waitForAnyVisible(
       page,
       [printSelector, ...intermediateSelectors, ...summaryStageSelectors],
-      8000,
+      12000,
     ).catch(() => null);
     if (stageMarker === printSelector) return;
 
@@ -1295,11 +1266,37 @@ async function advanceSafecoToSummaryPrint(page: Page): Promise<void> {
       if (latePrint === printSelector) return;
     }
 
+    // Some Safeco variants keep users on dwelling/cost pages with the same URL until
+    // an explicit continue transition occurs.
+    if (
+      currentUrl.includes("/home/dwelling.aspx") ||
+      currentUrl.includes("/home/cost") ||
+      currentUrl.includes("/home/lossdetails.aspx")
+    ) {
+      await clickContinue(page);
+      await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+      await page.waitForLoadState("networkidle").catch(() => undefined);
+      const postContinueMarker = await waitForAnyVisible(
+        page,
+        [printSelector, ...intermediateSelectors, ...summaryStageSelectors],
+        12000,
+      ).catch(() => null);
+      if (postContinueMarker === printSelector) return;
+      // Safeco sometimes stays on dwelling.aspx through a same-URL postback chain;
+      // push one extra continue to reach summary.
+      if (!postContinueMarker || intermediateSelectors.includes(postContinueMarker)) {
+        await clickContinue(page).catch(() => undefined);
+        await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+        await page.waitForLoadState("networkidle").catch(() => undefined);
+      }
+      continue;
+    }
+
     await clickContinue(page).catch(() => undefined);
-    await waitForAnyVisible(page, [printSelector, ...intermediateSelectors, ...summaryStageSelectors], 7000).catch(() => null);
+    await waitForAnyVisible(page, [printSelector, ...intermediateSelectors, ...summaryStageSelectors], 10000).catch(() => null);
   }
 
-  const finalPrint = await waitForAnyVisible(page, [printSelector], 25000);
+  const finalPrint = await waitForAnyVisible(page, [printSelector], 40000);
   if (finalPrint === printSelector) return;
   throw new Error(`Expected selector was not visible after continuing: ${printSelector} (url=${page.url()})`);
 }
@@ -2477,6 +2474,8 @@ async function fillLossDetailFields(
   rawLossText: string | undefined,
   lossCount: number,
   explicitCause: string | undefined,
+  explicitDate: string | undefined,
+  explicitAmount: string | undefined,
 ): Promise<void> {
   if (lossCount <= 0) return;
   const detailReady = await waitForAnyVisible(
@@ -2492,9 +2491,18 @@ async function fillLossDetailFields(
 
   const parsed = parseLossDetails(rawLossText);
 
-  const dateValue = parsed.date ?? formatTodayPlusDays(-365);
-  const amountValue = parsed.amount ?? "1000";
-  const causeLabel = explicitCause?.trim() || parsed.causeLabel || "All other property";
+  const dateValue = explicitDate?.trim() || parsed.date;
+  const amountValue = explicitAmount?.trim() || parsed.amount;
+  const causeLabel = explicitCause?.trim() || parsed.causeLabel;
+  if (!dateValue) {
+    throw new Error('[Safeco] Missing required field from form data: underwriting.lossDate');
+  }
+  if (!amountValue) {
+    throw new Error('[Safeco] Missing required field from form data: underwriting.lossAmount');
+  }
+  if (!causeLabel) {
+    throw new Error('[Safeco] Missing required field from form data: underwriting.lossCause');
+  }
   const causeValue = toLossCauseOptionValue(causeLabel);
 
   await fillRequiredField(
@@ -3517,6 +3525,8 @@ export async function runSafecoPlaywright(
           payload.underwriting.lossesLastFiveYears,
           Number(normalizedLossCount),
           payload.underwriting.lossCause,
+          payload.underwriting.lossDate,
+          payload.underwriting.lossAmount,
         );
         lossesHandled = true;
         await advanceUntilAnyVisible(page, getDwellingStartSelectors(), 2);
@@ -3572,20 +3582,34 @@ export async function runSafecoPlaywright(
       "#PolicyDwellingInCitySuburbDistrict",
       toDwellingLocatedValue(payload.dwellingInformation.dwellingLocatedIn),
     );
-    await selectByLabelOrValue(
+    await selectFirstPresent(
       page,
-      "#PolicyDwellingRoofingRenovationType",
-      toRoofRenovationValue(payload.dwellingInformation.roofRenovation),
+      ["#PolicyDwellingRoofs1ID", 'select[id*="Roofs1ID"]', 'select[name*="Roofs1ID"]'],
+      payload.dwellingInformation.roofMaterial,
     );
-    if (payload.dwellingInformation.roofRenovationYear) {
+    const roofRenovationValue = toRoofRenovationValue(payload.dwellingInformation.roofRenovation);
+    await selectByLabelOrValue(page, "#PolicyDwellingRoofingRenovationType", roofRenovationValue);
+    if (roofRenovationValue === "F") {
+      await fillRequiredField(
+        page,
+        ["#PolicyDwellingRoofingRenovationYear", 'input[id*="RoofingRenovationYear"]'],
+        payload.dwellingInformation.roofRenovationYear,
+        "Roof Renovation Year",
+      );
+    } else if (payload.dwellingInformation.roofRenovationYear) {
       await fillIfPresent(page, "#PolicyDwellingRoofingRenovationYear", payload.dwellingInformation.roofRenovationYear);
     }
-    await selectByLabelOrValue(
-      page,
-      "#PolicyDwellingPlumbingRenovationType",
-      toPlumbingRenovationValue(payload.dwellingInformation.plumbingRenovation),
-    );
-    if (payload.dwellingInformation.plumbingRenovationYear) {
+
+    const plumbingRenovationValue = toPlumbingRenovationValue(payload.dwellingInformation.plumbingRenovation);
+    await selectByLabelOrValue(page, "#PolicyDwellingPlumbingRenovationType", plumbingRenovationValue);
+    if (plumbingRenovationValue === "F" || plumbingRenovationValue === "P") {
+      await fillRequiredField(
+        page,
+        ["#PolicyDwellingPlumbingRenovationYear", 'input[id*="PlumbingRenovationYear"]'],
+        payload.dwellingInformation.plumbingRenovationYear,
+        "Plumbing Renovation Year",
+      );
+    } else if (payload.dwellingInformation.plumbingRenovationYear) {
       await fillIfPresent(
         page,
         "#PolicyDwellingPlumbingRenovationYear",
@@ -3613,12 +3637,7 @@ export async function runSafecoPlaywright(
       ],
       3,
     );
-    if (costGuideOrSummarySelector !== "#btnPrint") {
-      await selectByLabelOrValue(page, "#PolicyDwellingGarages1ID", "20002");
-      await fillIfPresent(page, "#PolicyDwellingGarages1Amount", "1");
-      await selectByLabelOrValue(page, "#PolicyDwellingAirConditioningSystems1ID", "60014");
-      await fillIfPresent(page, "#PolicyDwellingAirConditioningSystems1Amount", "100");
-    }
+    void costGuideOrSummarySelector;
 
     updateStep("safeco_summary");
     await advanceSafecoToSummaryPrint(page);

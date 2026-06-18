@@ -1,0 +1,18 @@
+﻿Safeco handoff bundle
+Generated: 2026-06-18T19:22:50.5907031+05:30
+
+Copied files:
+- peak-backend/src/playwright-automation/playwrightSafeco.runner.ts
+- peak-backend/src/playwright-automation/playwrightSafeco.service.ts
+- peak-backend/src/playwright-automation/playwrightSafeco.types.ts
+- peak-backend/src/playwright-automation/playwrightSafeco.job-store.ts
+- peak-backend/src/controllers/playwrightSafeco.controller.ts
+- peak-backend/src/routes/quote.routes.ts
+- peak-ins-quoter/src/lib/carriers/schemas/safeco-home.json
+- peak-ins-quoter/src/lib/carriers/safeco-home-schema.test.ts
+- peak-ins-quoter/src/lib/carriers/load-schema.ts
+- peak-ins-quoter/src/lib/carriers/types.ts
+- peak-ins-quoter/src/lib/carriers/playwright-api-urls.ts
+- peak-ins-quoter/src/lib/carriers/extract.ts
+- selenium_scripts/safeco_homeowners.py
+- selenium_scripts/safeco_auto.py

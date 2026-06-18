@@ -2,7 +2,7 @@ import axios from "axios";
 import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
-import { chromium, type Browser, type BrowserContext, type LaunchOptions, type Page, type Response } from "playwright";
+import { chromium, type Browser, type BrowserContext, type LaunchOptions, type Page } from "playwright";
 import { logger } from "../utils/logger";
 import { playwrightSafecoJobStore } from "./playwrightSafeco.job-store";
 import type {
@@ -1060,10 +1060,6 @@ async function clickYesNo(page: Page, baseIds: string[], value: "Yes" | "No"): P
 
 async function clickContinue(page: Page): Promise<void> {
   await closeSafecoModal(page);
-  // Some final stages do not expose Continue/Next. Treat visible print as already advanced.
-  if (await page.locator("#btnPrint").first().isVisible().catch(() => false)) {
-    return;
-  }
   const candidateSelectors = [
     "#Continue",
     "a#Continue",
@@ -1071,14 +1067,6 @@ async function clickContinue(page: Page): Promise<void> {
     "button#Continue",
     '[name="Continue"]',
     '[id*="Continue"]',
-    '[id*="btnContinue"]',
-    '[name*="btnContinue"]',
-    'a[onclick*="Continue"]',
-    'button[onclick*="Continue"]',
-    'input[onclick*="Continue"]',
-    'img[onclick*="Continue"]',
-    'img[src*="continue" i]',
-    'img[src*="next" i]',
     'button:has-text("Continue")',
     'a:has-text("Continue")',
     'button:has-text("Next")',
@@ -1087,12 +1075,6 @@ async function clickContinue(page: Page): Promise<void> {
     'input[type="button"][value*="Continue"]',
     'input[type="submit"][value*="Next"]',
     'input[type="button"][value*="Next"]',
-    'input[type="image"][src*="continue" i]',
-    'input[type="image"][src*="next" i]',
-    'a[id*="Continue"]',
-    'a[name*="Continue"]',
-    'a[id*="Next"]',
-    'a[name*="Next"]',
   ];
 
   const semanticLocators = [
@@ -1131,19 +1113,12 @@ async function clickContinue(page: Page): Promise<void> {
             "[id*='Continue']",
             "[name='Continue']",
             "[name*='Continue']",
-            "[id*='btnContinue']",
-            "[name*='btnContinue']",
             "[id*='Next']",
             "[name*='Next']",
-            "[onclick*='Continue']",
-            "[onclick*='Next']",
-            "img[src*='continue' i]",
-            "img[src*='next' i]",
             "a",
             "button",
             "input[type='button']",
             "input[type='submit']",
-            "img",
           ].join(", "),
         ),
       );
@@ -1161,9 +1136,7 @@ async function clickContinue(page: Page): Promise<void> {
           normalize(el.getAttribute("title") || "") ||
           normalize(el.getAttribute("aria-label") || "") ||
           normalize(el.id || "") ||
-          normalize(el.getAttribute("name") || "") ||
-          normalize(el.getAttribute("onclick") || "") ||
-          normalize((el as HTMLImageElement).src || "");
+          normalize(el.getAttribute("name") || "");
         return allowed.test(text);
       });
 
@@ -1179,153 +1152,7 @@ async function clickContinue(page: Page): Promise<void> {
     throw new Error(`[Safeco] Continue blocked by required fields: ${blockedItems.join(" | ")}`);
   }
 
-  // ASP.NET-style fallback: invoke postback-capable controls directly if present.
-  const clickedByPostback = await page
-    .evaluate(() => {
-      const nodes = Array.from(
-        document.querySelectorAll<HTMLElement>("a,button,input[type='submit'],input[type='button'],input[type='image']"),
-      );
-      const normalize = (s: string) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
-      const allowed = /continue|next|save\s*&?\s*continue/;
-
-      const pick = nodes.find((el) => {
-        if ((el as HTMLInputElement).disabled) return false;
-        const style = window.getComputedStyle(el);
-        if (style.display === "none" || style.visibility === "hidden") return false;
-        const text =
-          normalize(el.textContent || "") ||
-          normalize((el as HTMLInputElement).value || "") ||
-          normalize(el.getAttribute("title") || "") ||
-          normalize(el.getAttribute("aria-label") || "") ||
-          normalize(el.id || "") ||
-          normalize(el.getAttribute("name") || "") ||
-          normalize(el.getAttribute("onclick") || "") ||
-          normalize((el as HTMLImageElement).src || "");
-        return allowed.test(text);
-      });
-      if (!pick) return false;
-
-      try {
-        pick.click();
-        return true;
-      } catch {
-        return false;
-      }
-    })
-    .catch(() => false);
-
-  if (clickedByPostback) {
-    const blockedItems = await readSafecoRequiredModalItems(page);
-    if (!blockedItems.length) return;
-    throw new Error(`[Safeco] Continue blocked by required fields: ${blockedItems.join(" | ")}`);
-  }
-
-  // ASP.NET __doPostBack fallback for hidden linkbuttons.
-  const triggeredDoPostBack = await page
-    .evaluate(() => {
-      const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href^='javascript:__doPostBack']"));
-      const normalize = (s: string) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
-      const allowed = /continue|next|save\s*&?\s*continue/;
-      for (const a of anchors) {
-        const text =
-          normalize(a.textContent || "") ||
-          normalize(a.getAttribute("title") || "") ||
-          normalize(a.id || "") ||
-          normalize(a.getAttribute("name") || "") ||
-          normalize(a.getAttribute("href") || "");
-        if (!allowed.test(text)) continue;
-        try {
-          a.click();
-          return true;
-        } catch {
-          // keep scanning
-        }
-      }
-      return false;
-    })
-    .catch(() => false);
-
-  if (triggeredDoPostBack) {
-    const blockedItems = await readSafecoRequiredModalItems(page);
-    if (!blockedItems.length) return;
-    throw new Error(`[Safeco] Continue blocked by required fields: ${blockedItems.join(" | ")}`);
-  }
-
-  // Final fallback: same DOM strategy within iframes.
-  for (const frame of page.frames()) {
-    if (frame === page.mainFrame()) continue;
-    const clickedInFrame = await frame
-      .evaluate(() => {
-        const candidates = Array.from(
-          document.querySelectorAll<HTMLElement>(
-            [
-              "#Continue",
-              "[id*='Continue']",
-              "[name='Continue']",
-              "[name*='Continue']",
-              "[id*='btnContinue']",
-              "[name*='btnContinue']",
-              "[id*='Next']",
-              "[name*='Next']",
-              "[onclick*='Continue']",
-              "[onclick*='Next']",
-              "img[src*='continue' i]",
-              "img[src*='next' i]",
-              "a",
-              "button",
-              "input[type='button']",
-              "input[type='submit']",
-              "img",
-            ].join(", "),
-          ),
-        );
-        const normalize = (s: string) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
-        const allowed = /continue|next|save\s*&?\s*continue/i;
-        const pick = candidates.find((el) => {
-          if ((el as HTMLInputElement).disabled) return false;
-          const style = window.getComputedStyle(el);
-          if (style.display === "none" || style.visibility === "hidden") return false;
-          const text =
-            normalize(el.textContent || "") ||
-            normalize((el as HTMLInputElement).value || "") ||
-            normalize(el.getAttribute("title") || "") ||
-            normalize(el.getAttribute("aria-label") || "") ||
-            normalize(el.id || "") ||
-            normalize(el.getAttribute("name") || "") ||
-            normalize(el.getAttribute("onclick") || "") ||
-            normalize((el as HTMLImageElement).src || "");
-          return allowed.test(text);
-        });
-        if (!pick) return false;
-        pick.click();
-        return true;
-      })
-      .catch(() => false);
-
-    if (clickedInFrame) {
-      const blockedItems = await readSafecoRequiredModalItems(page);
-      if (!blockedItems.length) return;
-      throw new Error(`[Safeco] Continue blocked by required fields: ${blockedItems.join(" | ")}`);
-    }
-  }
-
-  // Last fallback: submit current focused form via Enter.
-  await page.keyboard.press("Enter").catch(() => undefined);
-  await page.waitForTimeout(180).catch(() => undefined);
-  const blockedAfterEnter = await readSafecoRequiredModalItems(page);
-  if (blockedAfterEnter.length) {
-    throw new Error(`[Safeco] Continue blocked by required fields: ${blockedAfterEnter.join(" | ")}`);
-  }
-  if (await page.locator("#btnPrint").first().isVisible().catch(() => false)) {
-    return;
-  }
-
-  // Do not hard-fail here: some Safeco stages have no explicit Continue control.
-  // Let caller stage-detection decide the next move.
-  logger.warn("[Safeco] Continue/Next control not found on current step; proceeding without click.", {
-    url: page.url(),
-  });
-  return;
+  throw new Error("Could not find a visible Continue/Next control to advance the Safeco flow.");
 }
 
 async function readSafecoRequiredModalItems(page: Page): Promise<string[]> {
@@ -2911,70 +2738,11 @@ function looksLikePdfUrl(url: string): boolean {
 }
 
 function isPdfBytes(bytes: Buffer): boolean {
-  return bytes.length >= 4 && bytes.subarray(0, 4).toString("ascii") === "%PDF";
-}
-
-function first100BytesPreview(bytes: Buffer): string {
-  if (!bytes.length) return "<empty>";
-  const slice = bytes.subarray(0, Math.min(100, bytes.length));
-  return slice.toString("hex");
-}
-
-function isChromePdfViewerUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.startsWith("chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai") || lower.startsWith("chrome://pdf-viewer");
-}
-
-function seemsHtml(contentType: string, bytes: Buffer): boolean {
-  const ct = contentType.toLowerCase();
-  if (ct.includes("text/html") || ct.includes("application/xhtml+xml")) return true;
-  const head = bytes.subarray(0, Math.min(300, bytes.length)).toString("utf8").toLowerCase();
-  return head.includes("<html") || head.includes("<!doctype html");
-}
-
-function isLikelyPdfResourceUrl(url: string): boolean {
-  return /pdf|pdfguid|displaypdf|printview|download/i.test(url);
-}
-
-function extractPdfUrlsFromJs(html: string, baseUrl: string): string[] {
-  const urls = new Set<string>();
-  const add = (raw: string): void => {
-    try {
-      const abs = new URL(raw.replace(/&amp;/g, "&"), baseUrl).toString();
-      if (isLikelyPdfResourceUrl(abs)) urls.add(abs);
-    } catch {
-      // ignore
-    }
-  };
-
-  const jsUrlRegexes = [
-    /(?:pdfUrl|pdfURL|pdfuri|pdfUri|fileUrl|fileURL|documentUrl|documentURL|src|file|url)\s*[:=]\s*["']([^"']+)["']/gi,
-    /window\.open\(\s*["']([^"']+)["']/gi,
-    /location(?:\.href)?\s*=\s*["']([^"']+)["']/gi,
-  ];
-  for (const re of jsUrlRegexes) {
-    for (const m of html.matchAll(re)) {
-      if (m[1]) add(m[1]);
-    }
-  }
-
-  return Array.from(urls);
-}
-
-async function logResponseDetails(tag: string, response: Response, bytes: Buffer): Promise<void> {
-  const headers = response.headers();
-  const contentType = headers["content-type"] ?? "";
-  const contentLength = headers["content-length"] ?? String(bytes.length);
-  logger.info("[Safeco] PDF probe response", {
-    tag,
-    url: response.url(),
-    contentType,
-    contentLength,
-    first100Bytes: first100BytesPreview(bytes),
-    isChromeViewerUrl: isChromePdfViewerUrl(response.url()),
-    isPdfHeader: isPdfBytes(bytes),
-    classifiedAsHtml: seemsHtml(contentType, bytes),
-  });
+  if (!bytes.length) return false;
+  const asciiHeader = bytes.subarray(0, 4).toString("ascii");
+  if (asciiHeader === "%PDF") return true;
+  const b64Prefix = bytes.subarray(0, Math.min(bytes.length, 12)).toString("base64");
+  return b64Prefix.startsWith("JVBER");
 }
 
 function extractPdfSourceUrlsFromViewerUrl(urlText: string): string[] {
@@ -3021,97 +2789,53 @@ function extractPdfUrlsFromHtml(baseUrl: string, html: string): string[] {
     pushMaybe(m[2]);
   }
 
-  const objectRegex = /<object[^>]*\bdata\s*=\s*["']([^"']+)["']/gi;
-  for (const m of html.matchAll(objectRegex)) {
-    pushMaybe(m[1]);
-  }
-
-  const embedRegex = /<embed[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi;
-  for (const m of html.matchAll(embedRegex)) {
-    pushMaybe(m[1]);
-  }
-
-  const iframeRegex = /<iframe[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi;
-  for (const m of html.matchAll(iframeRegex)) {
-    pushMaybe(m[1]);
-  }
-
   const urlLikeRegex = /https?:\/\/[^\s"'<>]+/gi;
   for (const m of html.matchAll(urlLikeRegex)) {
     pushMaybe(m[0]);
-  }
-
-  for (const jsUrl of extractPdfUrlsFromJs(html, baseUrl)) {
-    pushMaybe(jsUrl);
   }
 
   return Array.from(urls);
 }
 
 async function fetchPdfBytesFromPageUrl(page: Page, pageUrl: string): Promise<Buffer | undefined> {
-  const queue = [pageUrl, ...extractPdfSourceUrlsFromViewerUrl(pageUrl)];
-  const visited = new Set<string>();
-
-  while (queue.length) {
-    const candidate = queue.shift();
-    if (!candidate || visited.has(candidate)) continue;
-    visited.add(candidate);
-
+  const candidates = new Set<string>([pageUrl, ...extractPdfSourceUrlsFromViewerUrl(pageUrl)]);
+  for (const candidate of candidates) {
     if (candidate.startsWith("data:application/pdf;base64,")) {
       const b64 = candidate.slice("data:application/pdf;base64,".length);
       const bytes = Buffer.from(b64, "base64");
-      logger.info("[Safeco] PDF probe data URL", {
-        url: pageUrl,
-        contentType: "data:application/pdf",
-        contentLength: bytes.length,
-        first100Bytes: first100BytesPreview(bytes),
-        isPdfHeader: isPdfBytes(bytes),
-      });
       if (isPdfBytes(bytes)) return bytes;
       continue;
     }
 
     if (!/^https?:\/\//i.test(candidate)) continue;
-    const response = await page.request.get(candidate, {
-      headers: {
-        Accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
-      },
-    }).catch(() => null);
+    const response = await page.request.get(candidate).catch(() => null);
     if (!response) continue;
     const bytes = await response.body().catch(() => Buffer.alloc(0));
-    const headers = response.headers();
-    const contentType = headers["content-type"] ?? "";
-    logger.info("[Safeco] PDF probe URL fetch", {
-      url: candidate,
-      contentType,
-      contentLength: headers["content-length"] ?? String(bytes.length),
-      first100Bytes: first100BytesPreview(bytes),
-      isPdfHeader: isPdfBytes(bytes),
-      isChromeViewerUrl: isChromePdfViewerUrl(candidate),
-    });
-
     if (isPdfBytes(bytes)) return bytes;
 
-    if (seemsHtml(contentType, bytes)) {
+    const contentType = (response.headers()["content-type"] ?? "").toLowerCase();
+    if (contentType.includes("text/html")) {
       const html = bytes.toString("utf8");
       const nested = extractPdfUrlsFromHtml(candidate, html);
       for (const nestedUrl of nested) {
-        if (!visited.has(nestedUrl)) queue.push(nestedUrl);
+        const nestedResp = await page.request.get(nestedUrl).catch(() => null);
+        if (!nestedResp) continue;
+        const nestedBytes = await nestedResp.body().catch(() => Buffer.alloc(0));
+        if (isPdfBytes(nestedBytes)) return nestedBytes;
       }
     }
   }
-
   return undefined;
 }
 
 async function writePdfBytes(bytes: Buffer, jobId?: string): Promise<string> {
-  if (!isPdfBytes(bytes)) {
-    throw new Error("[Safeco] PDF bytes validation failed: does not start with %PDF.");
-  }
   const artifactDir = path.resolve(process.cwd(), "playwright-artifacts");
   fs.mkdirSync(artifactDir, { recursive: true });
   const pdfPath = path.join(artifactDir, `safeco-home-${jobId ?? Date.now()}.pdf`);
   fs.writeFileSync(pdfPath, bytes);
+  if (!isPdfBytes(bytes)) {
+    logger.warn("[Safeco] Saved non-PDF bytes as requested", { pdfPath });
+  }
   return pdfPath;
 }
 
@@ -3139,41 +2863,14 @@ async function generateSafecoPdf(context: BrowserContext, quotePage: Page, jobId
     }
   }
 
-  const capturedByNetwork: Array<{ url: string; contentType: string; contentLength: string; bytes: Buffer; tag: string }> = [];
-  let pendingResponses = 0;
-  let lastNetworkActivityAt = Date.now();
-  const onResponse = (response: Response): void => {
-    pendingResponses += 1;
-    void (async () => {
-      try {
-        const bytes = await response.body().catch(() => Buffer.alloc(0));
-        await logResponseDetails("context-listener", response, bytes);
-        const headers = response.headers();
-        capturedByNetwork.push({
-          url: response.url(),
-          contentType: headers["content-type"] ?? "",
-          contentLength: headers["content-length"] ?? String(bytes.length),
-          bytes,
-          tag: isChromePdfViewerUrl(response.url()) ? "chrome-viewer-response" : "network-response",
-        });
-      } finally {
-        lastNetworkActivityAt = Date.now();
-        pendingResponses = Math.max(0, pendingResponses - 1);
-      }
-    })();
-  };
-  context.on("response", onResponse);
-  reportPage.on("response", onResponse);
-
-  const downloadPromise = reportPage.waitForEvent("download", { timeout: 45000 }).catch(() => null);
+  const downloadPromise = reportPage.waitForEvent("download", { timeout: 20000 }).catch(() => null);
   const pdfResponsePromise = reportPage
     .waitForResponse((response) => {
-      const url = response.url().toLowerCase();
-      const contentType = (response.headers()["content-type"] ?? "").toLowerCase();
-      return contentType.includes("pdf") || url.includes("pdfguid=") || url.includes("/printview.aspx");
-    }, { timeout: 45000 })
+      const contentType = response.headers()["content-type"] ?? "";
+      return contentType.toLowerCase().includes("pdf");
+    }, { timeout: 20000 })
     .catch(() => null);
-  const pdfPopupPromise = context.waitForEvent("page", { timeout: 45000 }).catch(() => null);
+  const pdfPopupPromise = context.waitForEvent("page", { timeout: 20000 }).catch(() => null);
 
   await reportPage.locator("#btnPrint").first().click({ force: true });
 
@@ -3183,32 +2880,19 @@ async function generateSafecoPdf(context: BrowserContext, quotePage: Page, jobId
     fs.mkdirSync(artifactDir, { recursive: true });
     const pdfPath = path.join(artifactDir, `safeco-home-${jobId ?? Date.now()}.pdf`);
     await download.saveAs(pdfPath);
-    const bytes = fs.readFileSync(pdfPath);
-    logger.info("[Safeco] PDF download branch", {
-      url: download.url(),
-      contentType: "download-event",
-      contentLength: bytes.length,
-      first100Bytes: first100BytesPreview(bytes),
-      isPdfHeader: isPdfBytes(bytes),
-    });
-    if (isPdfBytes(bytes)) {
-      context.off("response", onResponse);
-      reportPage.off("response", onResponse);
-      return pdfPath;
-    }
-    logger.warn("[Safeco] Download branch was not actual PDF bytes; ignoring saved file.", { pdfPath });
-    fs.unlinkSync(pdfPath);
+    return pdfPath;
   }
 
   const pdfResponse = await pdfResponsePromise;
   if (pdfResponse) {
     const bytes = await pdfResponse.body();
-    await logResponseDetails("reportPage-waitForResponse", pdfResponse, bytes);
-    if (isPdfBytes(bytes)) {
-      context.off("response", onResponse);
-      reportPage.off("response", onResponse);
-      return writePdfBytes(bytes, jobId);
+    if (!isPdfBytes(bytes)) {
+      logger.warn("[Safeco] pdfResponse branch returned non-PDF bytes; saving anyway", {
+        contentType: pdfResponse.headers()["content-type"] ?? "",
+        url: pdfResponse.url(),
+      });
     }
+    return writePdfBytes(bytes, jobId);
   }
 
   const pdfPopup = await pdfPopupPromise;
@@ -3218,16 +2902,13 @@ async function generateSafecoPdf(context: BrowserContext, quotePage: Page, jobId
     if (looksLikePdfUrl(popupUrl)) {
       const bytes = await fetchPdfBytesFromPageUrl(pdfPopup, popupUrl);
       if (bytes) {
-        logger.info("[Safeco] PDF capture classification", {
-          branch: "popup-url-follow",
-          popupUrl,
-          classifiedAs: isChromePdfViewerUrl(popupUrl) ? "chrome-pdf-viewer-page" : "pdf-or-html-page",
-        });
-        context.off("response", onResponse);
-        reportPage.off("response", onResponse);
         return writePdfBytes(bytes, jobId);
       }
-      logger.warn("[Safeco] Popup URL looked like PDF source but yielded no extractable PDF bytes", { popupUrl });
+      logger.warn("[Safeco] Popup URL looked like PDF source but yielded no extractable bytes", { popupUrl });
+      const fallbackBytes = await pdfPopup.request.get(popupUrl).then((r) => r.body()).catch(() => Buffer.alloc(0));
+      if (fallbackBytes.length > 0) {
+        return writePdfBytes(fallbackBytes, jobId);
+      }
     }
   }
 
@@ -3236,76 +2917,16 @@ async function generateSafecoPdf(context: BrowserContext, quotePage: Page, jobId
   if (looksLikePdfUrl(reportUrl)) {
     const bytes = await fetchPdfBytesFromPageUrl(reportPage, reportUrl);
     if (bytes) {
-      logger.info("[Safeco] PDF capture classification", {
-        branch: "report-url-follow",
-        reportUrl,
-        classifiedAs: isChromePdfViewerUrl(reportUrl) ? "chrome-pdf-viewer-page" : "pdf-or-html-page",
-      });
-      context.off("response", onResponse);
-      reportPage.off("response", onResponse);
       return writePdfBytes(bytes, jobId);
     }
-    logger.warn("[Safeco] Report URL looked like PDF source but yielded no extractable PDF bytes", { reportUrl });
-  }
-
-  const networkDeadline = Date.now() + 30000;
-  while (Date.now() < networkDeadline) {
-    if (pendingResponses === 0 && Date.now() - lastNetworkActivityAt > 2200) {
-      break;
-    }
-    await reportPage.waitForTimeout(120).catch(() => undefined);
-  }
-  context.off("response", onResponse);
-  reportPage.off("response", onResponse);
-
-  const forcedCandidateUrls = new Set<string>();
-  for (const item of capturedByNetwork) {
-    const u = item.url;
-    if (isLikelyPdfResourceUrl(u) || u.toLowerCase().includes("pdfguid=") || u.toLowerCase().includes("/printview.aspx")) {
-      forcedCandidateUrls.add(u);
-      for (const extra of extractPdfSourceUrlsFromViewerUrl(u)) {
-        forcedCandidateUrls.add(extra);
-      }
-    }
-  }
-  forcedCandidateUrls.add(reportPage.url());
-  if (pdfPopup && !pdfPopup.isClosed()) {
-    forcedCandidateUrls.add(pdfPopup.url());
-  }
-
-  for (const forcedUrl of forcedCandidateUrls) {
-    if (!/^https?:\/\//i.test(forcedUrl)) continue;
-    const forcedResp = await reportPage.request.get(forcedUrl, {
-      headers: {
-        Accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
-      },
-    }).catch(() => null);
-    if (!forcedResp) continue;
-    const forcedBytes = await forcedResp.body().catch(() => Buffer.alloc(0));
-    logger.info("[Safeco] Forced PDF URL fetch", {
-      url: forcedUrl,
-      contentType: forcedResp.headers()["content-type"] ?? "",
-      contentLength: forcedResp.headers()["content-length"] ?? String(forcedBytes.length),
-      first100Bytes: first100BytesPreview(forcedBytes),
-      isPdfHeader: isPdfBytes(forcedBytes),
-    });
-    if (isPdfBytes(forcedBytes)) {
-      return writePdfBytes(forcedBytes, jobId);
+    logger.warn("[Safeco] Report URL looked like PDF source but yielded no extractable bytes", { reportUrl });
+    const fallbackBytes = await reportPage.request.get(reportUrl).then((r) => r.body()).catch(() => Buffer.alloc(0));
+    if (fallbackBytes.length > 0) {
+      return writePdfBytes(fallbackBytes, jobId);
     }
   }
 
-  for (const item of capturedByNetwork) {
-    if (isPdfBytes(item.bytes)) {
-      logger.info("[Safeco] PDF capture classification", {
-        branch: item.tag,
-        url: item.url,
-        classifiedAs: "actual-pdf-bytes",
-      });
-      return writePdfBytes(item.bytes, jobId);
-    }
-  }
-
-  throw new Error("[Safeco] Could not capture actual PDF bytes from print flow.");
+  return undefined;
 }
 
 function isErrAborted(error: unknown): boolean {

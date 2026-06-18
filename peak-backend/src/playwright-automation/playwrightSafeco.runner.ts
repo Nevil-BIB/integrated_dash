@@ -1233,6 +1233,77 @@ async function ensureUnderwritingSectionReady(page: Page): Promise<void> {
   await clickContinue(page).catch(() => undefined);
 }
 
+async function advanceSafecoToSummaryPrint(page: Page): Promise<void> {
+  const printSelector = "#btnPrint";
+  const intermediateSelectors = [
+    "#PolicyDwellingNumberOfBathsFull",
+    "#PolicyDwellingNumberOfBathsThreeQuarter",
+    "#PolicyDwellingNumberOfBathsHalf",
+    "#PolicyDwellingHeatingSystems1ID",
+    "#PolicyDwellingExteriorWalls1ID",
+    "#PolicyDwellingFoundations1ID",
+  ];
+  const summaryStageSelectors = [
+    "#btnSave",
+    "#PolicyQuoteNumber",
+    '[id*="QuoteNumber"]',
+    '[id*="Summary"]',
+  ];
+
+  const first = await waitForAnyVisible(
+    page,
+    [printSelector, ...intermediateSelectors, ...summaryStageSelectors],
+    10000,
+  );
+  if (first === printSelector) return;
+
+  for (let i = 0; i < 10; i++) {
+    if (await isVisible(page, printSelector)) return;
+
+    // If bath dropdowns are present and empty, select the first non-empty option dynamically.
+    for (const selector of [
+      "#PolicyDwellingNumberOfBathsFull",
+      "#PolicyDwellingNumberOfBathsThreeQuarter",
+      "#PolicyDwellingNumberOfBathsHalf",
+    ]) {
+      const dropdown = page.locator(selector).first();
+      if (!(await dropdown.isVisible().catch(() => false))) continue;
+      const current = await dropdown.inputValue().catch(() => "");
+      if (current && current.trim()) continue;
+      const firstNonEmpty = await dropdown
+        .locator("option")
+        .evaluateAll((nodes) => {
+          const match = nodes.find((n) => ((n as HTMLOptionElement).value ?? "").trim().length > 0);
+          return match ? (match as HTMLOptionElement).value : "";
+        })
+        .catch(() => "");
+      if (firstNonEmpty) {
+        await dropdown.selectOption({ value: firstNonEmpty }).catch(() => undefined);
+      }
+    }
+
+    const stageMarker = await waitForAnyVisible(
+      page,
+      [printSelector, ...intermediateSelectors, ...summaryStageSelectors],
+      8000,
+    ).catch(() => null);
+    if (stageMarker === printSelector) return;
+
+    // If we appear to be on summary-like stage, wait longer for print to become visible.
+    if (stageMarker && summaryStageSelectors.includes(stageMarker)) {
+      const latePrint = await waitForAnyVisible(page, [printSelector], 20000);
+      if (latePrint === printSelector) return;
+    }
+
+    await clickContinue(page).catch(() => undefined);
+    await waitForAnyVisible(page, [printSelector, ...intermediateSelectors, ...summaryStageSelectors], 7000).catch(() => null);
+  }
+
+  const finalPrint = await waitForAnyVisible(page, [printSelector], 25000);
+  if (finalPrint === printSelector) return;
+  throw new Error(`Expected selector was not visible after continuing: ${printSelector} (url=${page.url()})`);
+}
+
 function getDwellingStartSelectors(): string[] {
   return [
     'label[for="PolicyDwellingOutdatedElectricalYNY"]',
@@ -1669,6 +1740,33 @@ async function clickYesNoByNameFragments(
   }
 
   return false;
+}
+
+async function forceYesNoByNameFragments(
+  page: Page,
+  fragments: string[],
+  value: "Yes" | "No",
+): Promise<boolean> {
+  const suffix = value === "Yes" ? "Y" : "N";
+  return page
+    .evaluate(({ parts, target }) => {
+      const radios = Array.from(document.querySelectorAll('input[type="radio"]')) as HTMLInputElement[];
+      const norm = (s: string) => (s || "").toLowerCase();
+      const candidates = radios.filter((r) => {
+        const id = norm(r.id);
+        const name = norm(r.name);
+        return parts.some((p) => id.includes(p) || name.includes(p));
+      });
+      for (const radio of candidates) {
+        if (String(radio.value || "").toUpperCase() !== target) continue;
+        radio.click();
+        radio.checked = true;
+        radio.dispatchEvent(new Event("input", { bubbles: true }));
+        radio.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return candidates.some((r) => String(r.value || "").toUpperCase() === target && r.checked);
+    }, { parts: fragments.map((f) => f.toLowerCase()), target: suffix })
+    .catch(() => false);
 }
 
 async function anyChecked(page: Page, selectors: string[]): Promise<boolean> {
@@ -3093,16 +3191,47 @@ export async function runSafecoPlaywright(
       ["PolicyDwellingCourseConstructionYN", "PolicyDwellingCourseConstruction", "PolicyDwellingUnderConstructionYN"],
       payload.underwriting.underConstruction,
     ).catch(async () => {
-      const ok = await clickYesNoByQuestionText(
+      const byQuestion = await clickYesNoByQuestionText(
         page,
         /under construction|course of construction|currently under construction/i,
         payload.underwriting.underConstruction,
       ).catch(() => false);
-      if (!ok) {
-        throw new Error(
-          `[Safeco] Could not select required field: Under Construction (${payload.underwriting.underConstruction})`,
-        );
+      if (byQuestion) return;
+
+      const byFragments = await clickYesNoByNameFragments(
+        page,
+        ["CourseConstruction", "UnderConstruction", "DwellingCourseConstruction", "Construction"],
+        payload.underwriting.underConstruction,
+      ).catch(() => false);
+      if (byFragments) return;
+
+      const forced = await forceYesNoByNameFragments(
+        page,
+        ["CourseConstruction", "UnderConstruction", "DwellingCourseConstruction", "Construction"],
+        payload.underwriting.underConstruction,
+      ).catch(() => false);
+      if (forced) return;
+
+      const hasUnderConstructionField = await waitForAnyAttached(
+        page,
+        [
+          'input[type="radio"][name*="CourseConstruction"]',
+          'input[type="radio"][id*="CourseConstruction"]',
+          'input[type="radio"][name*="UnderConstruction"]',
+          'input[type="radio"][id*="UnderConstruction"]',
+          '[id*="CourseConstruction"]',
+          '[id*="UnderConstruction"]',
+        ],
+        1000,
+      );
+      if (!hasUnderConstructionField) {
+        logger.warn("[Safeco] Under Construction field not present on this variant; continuing");
+        return;
       }
+
+      throw new Error(
+        `[Safeco] Could not select required field: Under Construction (${payload.underwriting.underConstruction})`,
+      );
     });
     if (payload.underwriting.underConstruction === "Yes") {
       if (payload.underwriting.constructionCompletedWithin12Months) {
@@ -3398,16 +3527,45 @@ export async function runSafecoPlaywright(
     await advanceUntilAnyVisible(page, getDwellingStartSelectors(), 2);
     await clickYesNo(page, ["PolicyDwellingOutdatedElectricalYN"], payload.dwellingInformation.outdatedElectrical)
       .catch(async () => {
-        const ok = await clickYesNoByQuestionText(
+        const byQuestion = await clickYesNoByQuestionText(
           page,
           /outdated electrical|electrical system/i,
           payload.dwellingInformation.outdatedElectrical,
         ).catch(() => false);
-        if (!ok) {
-          throw new Error(
-            `[Safeco] Could not select required field: Outdated Electrical (${payload.dwellingInformation.outdatedElectrical})`,
-          );
+        if (byQuestion) return;
+
+        const byFragments = await clickYesNoByNameFragments(
+          page,
+          ["OutdatedElectrical", "DwellingOutdatedElectrical", "Electrical"],
+          payload.dwellingInformation.outdatedElectrical,
+        ).catch(() => false);
+        if (byFragments) return;
+
+        const forced = await forceYesNoByNameFragments(
+          page,
+          ["OutdatedElectrical", "DwellingOutdatedElectrical", "Electrical"],
+          payload.dwellingInformation.outdatedElectrical,
+        ).catch(() => false);
+        if (forced) return;
+
+        const hasOutdatedField = await waitForAnyAttached(
+          page,
+          [
+            'input[type="radio"][name*="OutdatedElectrical"]',
+            'input[type="radio"][id*="OutdatedElectrical"]',
+            'label[for*="OutdatedElectrical"]',
+            '[id*="OutdatedElectrical"]',
+          ],
+          1000,
+        );
+        if (!hasOutdatedField) {
+          logger.warn("[Safeco] Outdated Electrical field not present on this variant; continuing");
+          return;
         }
+
+        throw new Error(
+          `[Safeco] Could not select required field: Outdated Electrical (${payload.dwellingInformation.outdatedElectrical})`,
+        );
       });
     await selectByLabelOrValue(
       page,
@@ -3441,14 +3599,29 @@ export async function runSafecoPlaywright(
     );
 
     updateStep("safeco_cost_guide");
-    await advanceUntilVisible(page, "#PolicyDwellingGarages1ID", 2);
-    await selectByLabelOrValue(page, "#PolicyDwellingGarages1ID", "20002");
-    await fillIfPresent(page, "#PolicyDwellingGarages1Amount", "1");
-    await selectByLabelOrValue(page, "#PolicyDwellingAirConditioningSystems1ID", "60014");
-    await fillIfPresent(page, "#PolicyDwellingAirConditioningSystems1Amount", "100");
+    const costGuideOrSummarySelector = await advanceUntilAnyVisible(
+      page,
+      [
+        "#PolicyDwellingGarages1ID",
+        "#PolicyDwellingAirConditioningSystems1ID",
+        "#PolicyDwellingBypassCostGuideYNY",
+        "#PolicyDwellingBypassCostGuideYNN",
+        "#PolicyDwellingHeatingSystems1ID",
+        "#PolicyDwellingExteriorWalls1ID",
+        "#PolicyDwellingFoundations1ID",
+        "#btnPrint",
+      ],
+      3,
+    );
+    if (costGuideOrSummarySelector !== "#btnPrint") {
+      await selectByLabelOrValue(page, "#PolicyDwellingGarages1ID", "20002");
+      await fillIfPresent(page, "#PolicyDwellingGarages1Amount", "1");
+      await selectByLabelOrValue(page, "#PolicyDwellingAirConditioningSystems1ID", "60014");
+      await fillIfPresent(page, "#PolicyDwellingAirConditioningSystems1Amount", "100");
+    }
 
     updateStep("safeco_summary");
-    await advanceUntilVisible(page, "#btnPrint", 6);
+    await advanceSafecoToSummaryPrint(page);
 
     updateStep("safeco_generate_pdf");
     const pdfPath = await generateSafecoPdf(context, page, jobId);

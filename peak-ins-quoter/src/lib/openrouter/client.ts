@@ -35,6 +35,9 @@ import {
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const MODEL = 'anthropic/claude-sonnet-4'
 const MAX_PAGES_PER_BATCH = 5
+const OPENROUTER_REQUEST_TIMEOUT_MS = Number(process.env.OPENROUTER_REQUEST_TIMEOUT_MS ?? 180000)
+const OPENROUTER_MAX_RETRIES = Number(process.env.OPENROUTER_MAX_RETRIES ?? 2)
+const OPENROUTER_RETRY_DELAY_MS = Number(process.env.OPENROUTER_RETRY_DELAY_MS ?? 1500)
 
 interface OpenRouterMessage {
   role: 'user' | 'assistant' | 'system'
@@ -61,6 +64,8 @@ interface OpenRouterResponse {
   }
 }
 
+type OpenRouterFetchInit = RequestInit
+
 /**
  * Clean and validate base64 string
  * Removes any whitespace, newlines, or data URI prefix
@@ -71,6 +76,46 @@ function cleanBase64(base64: string): string {
   // Remove any whitespace or newlines
   cleaned = cleaned.replace(/[\s\n\r]/g, '')
   return cleaned
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isTransientOpenRouterError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error ?? '')
+  const normalized = msg.toLowerCase()
+  return (
+    normalized.includes('und_err_connect_timeout') ||
+    normalized.includes('connect timeout') ||
+    normalized.includes('timed out') ||
+    normalized.includes('econnreset') ||
+    normalized.includes('fetch failed') ||
+    normalized.includes('socket hang up')
+  )
+}
+
+async function fetchOpenRouterWithRetry(url: string, init: OpenRouterFetchInit): Promise<Response> {
+  let lastError: unknown = null
+  const attempts = Math.max(1, OPENROUTER_MAX_RETRIES + 1)
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(OPENROUTER_REQUEST_TIMEOUT_MS),
+      } as OpenRouterFetchInit)
+    } catch (error) {
+      lastError = error
+      const retryable = isTransientOpenRouterError(error)
+      const finalAttempt = attempt >= attempts
+      console.error(`[OpenRouter] Network error attempt ${attempt}/${attempts}:`, error)
+      if (!retryable || finalAttempt) break
+      await sleep(OPENROUTER_RETRY_DELAY_MS * attempt)
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('OpenRouter request failed')
 }
 
 /**
@@ -121,7 +166,7 @@ async function callClaudeVision(
   console.log('[OpenRouter] Number of content items:', messageContent.length)
   console.log('[OpenRouter] Request body size:', JSON.stringify(requestBody).length)
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  const response = await fetchOpenRouterWithRetry(OPENROUTER_API_URL, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -1207,7 +1252,7 @@ export async function sendToOpenRouter(
     throw new Error('OPENROUTER_API_KEY is not configured')
   }
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  const response = await fetchOpenRouterWithRetry(OPENROUTER_API_URL, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,

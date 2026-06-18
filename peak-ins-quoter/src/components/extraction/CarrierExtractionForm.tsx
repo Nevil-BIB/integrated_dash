@@ -94,6 +94,16 @@ function schemaTypeToInputType(field: CarrierSchemaField): FieldInputType {
   }
 }
 
+function toStartCase(value: string): string {
+  return value
+    .replace(/\./g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (m) => m.toUpperCase())
+}
+
 function sectionStatsForFields(
   data: CarrierFormData,
   fields: CarrierSchemaField[],
@@ -225,7 +235,81 @@ export function CarrierExtractionForm({
 
   const renderArrayFields = (field: CarrierSchemaField) => {
     if (carrierOptionId !== 'chubb-home') {
-      return null
+      if (!field.itemSchema) return null
+
+      const itemEntries = Object.entries(field.itemSchema)
+      if (itemEntries.length === 0) return null
+
+      const carrierFieldsMap = getCarrierFieldsMap(data, carrierOptionId) ?? {}
+      const prefix = `${field.key}[`
+      let detectedMaxIndex = -1
+      for (const k of Object.keys(carrierFieldsMap)) {
+        if (!k.startsWith(prefix)) continue
+        const match = /^\w+\[(\d+)\]\./.exec(k)
+        if (!match) continue
+        detectedMaxIndex = Math.max(detectedMaxIndex, Number(match[1]))
+      }
+      const count = Math.max(1, detectedMaxIndex + 1)
+
+      return (
+        <div className="space-y-5 col-span-full">
+          {Array.from({ length: count }).map((_, index) => (
+            <div key={`${field.key}-${index}`} className="rounded-lg border p-4 space-y-4">
+              <div className="text-sm font-medium">{field.label} #{index + 1}</div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {itemEntries.map(([itemKey, itemDef]) => {
+                  const schemaKey = `${field.key}[${index}].${itemKey}`
+                  const extracted = getFieldBySchemaKey(data, schemaKey, carrierOptionId)
+                  const itemType = itemDef.type as CarrierSchemaField['type']
+                  const itemLabel = itemDef.label ?? toStartCase(itemKey)
+                  const required = Boolean(itemDef.required)
+                  const options = itemDef.options ?? []
+
+                  if (itemType === 'checkbox') {
+                    return (
+                      <div key={schemaKey} className="col-span-full sm:col-span-1">
+                        <label className="flex flex-wrap items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-input"
+                            checked={extracted.value === 'Yes'}
+                            onChange={(e) => handleCheckboxChange(schemaKey, e.target.checked)}
+                          />
+                          <span>{itemLabel}</span>
+                          <CarrierRequirementBadge required={required} />
+                        </label>
+                      </div>
+                    )
+                  }
+
+                  const inputType: FieldInputType =
+                    itemType === 'date'
+                      ? 'date'
+                      : itemType === 'number'
+                        ? 'number'
+                        : itemType === 'dropdown'
+                          ? (options.length > 0 ? 'select' : 'text')
+                          : 'text'
+
+                  return (
+                    <FieldEditor
+                      key={schemaKey}
+                      field={extracted}
+                      label={itemLabel}
+                      fieldKey={`carrier-${schemaKey}`}
+                      type={inputType}
+                      required={required}
+                      showRequirementLabel
+                      options={options}
+                      onChange={(value) => handleScalarChange(schemaKey, value)}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )
     }
 
     if (field.key === 'attachedStructures') {

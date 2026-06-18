@@ -278,6 +278,25 @@ function normalizeNatGenPayload(raw: unknown): NatGenPayload {
       (index === 0 ? "Named Insured" : "Spouse"),
     licenseStatus:
       (toStringOrUndefined(driver.licenseStatus) as NatGenDriver["licenseStatus"]) ?? "Valid",
+    hasCDL: toBooleanOrUndefined(driver.hasCDL),
+    licenseState: toStringOrUndefined(driver.licenseState),
+    suffix: toStringOrUndefined(driver.suffix) as NatGenDriver["suffix"] | undefined,
+    stateFiling: toStringOrUndefined(driver.stateFiling) as NatGenDriver["stateFiling"] | undefined,
+    dlNumber: toStringOrUndefined(driver.dlNumber),
+    addViolations: toBooleanOrUndefined(driver.addViolations),
+    military: toBooleanOrUndefined(driver.military),
+    email: toStringOrUndefined(driver.email),
+    middleName: toStringOrUndefined(driver.middleName),
+    cellPhone: (() => {
+      const cell = asRecord(driver.cellPhone);
+      const areaCode = toStringOrUndefined(cell.areaCode);
+      const exchange = toStringOrUndefined(cell.exchange);
+      const number = toStringOrUndefined(cell.number);
+      if (areaCode && exchange && number) {
+        return { areaCode, exchange, number };
+      }
+      return undefined;
+    })(),
   });
 
   const drivers: NatGenDriver[] =
@@ -294,6 +313,13 @@ function normalizeNatGenPayload(raw: unknown): NatGenPayload {
             driverStatus: "Rated Driver",
             relationship: "Named Insured",
             licenseStatus: "Valid",
+            hasCDL: pickBool("drivers[0].hasCDL"),
+            licenseState: pick("drivers[0].licenseState"),
+            dlNumber: pick("drivers[0].dlNumber"),
+            stateFiling: pick("drivers[0].stateFiling") as NatGenDriver["stateFiling"] | undefined,
+            addViolations: pickBool("drivers[0].addViolations"),
+            military: pickBool("drivers[0].military"),
+            email: pick("drivers[0].email"),
           },
         ];
 
@@ -615,6 +641,51 @@ async function selectFirstVisible(page: Page, selectors: string[], value: string
   }
 }
 
+async function selectRequiredFirstVisible(page: Page, selectors: string[], value: string, fieldName: string): Promise<void> {
+  let found = false;
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    if (await locator.isVisible().catch(() => false)) {
+      found = true;
+      await locator.selectOption(value).catch(async () => locator.selectOption({ label: value }));
+      const selected = await locator.inputValue().catch(() => "");
+      if (selected && selected !== "-1") {
+        return;
+      }
+    }
+  }
+  if (!found) {
+    throw new Error(`[NationalGeneral] Required field not visible: ${fieldName}`);
+  }
+  throw new Error(`[NationalGeneral] Could not set required field: ${fieldName}`);
+}
+
+async function setBooleanFirstVisible(page: Page, selectors: string[], value: boolean): Promise<void> {
+  const desiredSelect = value ? "True" : "False";
+  const desiredYesNo = value ? "Yes" : "No";
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    if (!(await locator.isVisible().catch(() => false))) continue;
+
+    const tag = await locator.evaluate((el) => el.tagName.toLowerCase()).catch(() => "");
+    if (tag === "select") {
+      await locator.selectOption(desiredSelect).catch(async () => locator.selectOption({ label: desiredSelect }).catch(() => undefined));
+      await locator.selectOption({ label: desiredYesNo }).catch(() => undefined);
+      return;
+    }
+
+    const type = await locator.getAttribute("type").catch(() => "");
+    if ((type ?? "").toLowerCase() === "checkbox") {
+      if (value) {
+        await locator.check({ force: true }).catch(() => locator.click({ force: true }).catch(() => undefined));
+      } else {
+        await locator.uncheck({ force: true }).catch(() => undefined);
+      }
+      return;
+    }
+  }
+}
+
 async function clickFirstVisible(page: Page, selectors: string[]): Promise<boolean> {
   for (const selector of selectors) {
     const locator = page.locator(selector).first();
@@ -666,12 +737,108 @@ async function fillDriver(page: Page, driver: NatGenDriver, isLast: boolean): Pr
     "select[id$='ucInsuredDriver_ddlMaritalStatus']",
     "select[id*='InsuredDriver'][id*='MaritalStatus']",
   ], driver.maritalStatus);
+  if (driver.relationship) {
+    await selectFirstVisible(page, [
+      "select[id$='ucInsuredDriver_ddlRelationship']",
+      "select[id$='ucInsuredDriver_ddlRelation']",
+      "select[id*='InsuredDriver'][id*='Relationship']",
+      "select[id*='InsuredDriver'][id*='Relation']",
+    ], driver.relationship);
+  }
   if (driver.driverStatus) {
     await selectFirstVisible(page, [
       "select[id$='ucInsuredDriver_ddlDriverStatus']",
       "select[id*='InsuredDriver'][id*='DriverStatus']",
     ], driver.driverStatus);
   }
+  await selectRequiredFirstVisible(page, [
+    "#ctl00_MainContent_ucInsuredDriver_ddlDynamicDrive",
+    "select[id$='ucInsuredDriver_ddlDynamicDrive']",
+    "select[id*='InsuredDriver'][id*='DynamicDrive']",
+    "select[name*='InsuredDriver'][name*='DynamicDrive']",
+    "select[id*='ddlDynamicDrive']",
+  ], driver.dynamicDrive ? "True" : "False", "DynamicDrive");
+  if (driver.licenseStatus) {
+    await selectFirstVisible(page, [
+      "select[id$='ucInsuredDriver_ddlLicenseStatus']",
+      "select[id*='InsuredDriver'][id*='LicenseStatus']",
+      "select[name*='InsuredDriver'][name*='LicenseStatus']",
+    ], driver.licenseStatus);
+  }
+  if (driver.licenseState) {
+    await selectFirstVisible(page, [
+      "select[id$='ucInsuredDriver_ddlLicenseState']",
+      "select[id*='InsuredDriver'][id*='LicenseState']",
+      "select[name*='InsuredDriver'][name*='LicenseState']",
+    ], driver.licenseState);
+  }
+  if (driver.stateFiling) {
+    await selectFirstVisible(page, [
+      "select[id$='ucInsuredDriver_ddlStateFiling']",
+      "select[id*='InsuredDriver'][id*='StateFiling']",
+      "select[name*='InsuredDriver'][name*='StateFiling']",
+    ], driver.stateFiling);
+  }
+  if (driver.dlNumber) {
+    await fillFirstVisible(page, [
+      "input[id$='ucInsuredDriver_txtLicenseNumber']",
+      "input[id$='ucInsuredDriver_txtDLNumber']",
+      "input[id*='InsuredDriver'][id*='LicenseNumber']",
+      "input[id*='InsuredDriver'][id*='DLNumber']",
+      "input[name*='InsuredDriver'][name*='LicenseNumber']",
+      "input[name*='InsuredDriver'][name*='DLNumber']",
+    ], driver.dlNumber);
+  }
+  if (driver.email) {
+    await fillFirstVisible(page, [
+      "input[id$='ucInsuredDriver_txtEmail']",
+      "input[id*='InsuredDriver'][id*='Email']",
+      "input[name*='InsuredDriver'][name*='Email']",
+    ], driver.email);
+  }
+  if (driver.cellPhone) {
+    await fillFirstVisible(page, [
+      "input[id$='ucInsuredDriver_PhoneNumber1_txtPhone1']",
+      "input[id*='InsuredDriver'][id*='PhoneNumber1_txtPhone1']",
+      "input[name*='InsuredDriver'][name*='PhoneNumber1$txtPhone1']",
+    ], driver.cellPhone.areaCode);
+    await fillFirstVisible(page, [
+      "input[id$='ucInsuredDriver_PhoneNumber1_txtPhone2']",
+      "input[id*='InsuredDriver'][id*='PhoneNumber1_txtPhone2']",
+      "input[name*='InsuredDriver'][name*='PhoneNumber1$txtPhone2']",
+    ], driver.cellPhone.exchange);
+    await fillFirstVisible(page, [
+      "input[id$='ucInsuredDriver_PhoneNumber1_txtPhone3']",
+      "input[id*='InsuredDriver'][id*='PhoneNumber1_txtPhone3']",
+      "input[name*='InsuredDriver'][name*='PhoneNumber1$txtPhone3']",
+    ], driver.cellPhone.number);
+  }
+  if (driver.hasCDL !== undefined) {
+    await setBooleanFirstVisible(page, [
+      "select[id$='ucInsuredDriver_ddlHasCDL']",
+      "input[id$='ucInsuredDriver_chkHasCDL']",
+      "select[id*='InsuredDriver'][id*='HasCDL']",
+      "input[id*='InsuredDriver'][id*='HasCDL']",
+    ], driver.hasCDL);
+  }
+  if (driver.addViolations !== undefined) {
+    await setBooleanFirstVisible(page, [
+      "select[id$='ucInsuredDriver_ddlAddViolations']",
+      "input[id$='ucInsuredDriver_chkAddViolations']",
+      "select[id*='InsuredDriver'][id*='AddViolations']",
+      "input[id*='InsuredDriver'][id*='AddViolations']",
+    ], driver.addViolations);
+  }
+  if (driver.military !== undefined) {
+    await setBooleanFirstVisible(page, [
+      "select[id$='ucInsuredDriver_ddlMilitary']",
+      "input[id$='ucInsuredDriver_chkMilitary']",
+      "select[id*='InsuredDriver'][id*='Military']",
+      "input[id*='InsuredDriver'][id*='Military']",
+    ], driver.military);
+  }
+  await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+  await page.waitForTimeout(350).catch(() => undefined);
   const expField = page.locator("input[id$='ucInsuredDriver_txtYearsExperience'], input[id*='InsuredDriver'][id*='YearsExperience']").first();
   await expField.clear();
   await expField.fill(yearsExperience(driver.dateOfBirth));

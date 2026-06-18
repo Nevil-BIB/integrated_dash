@@ -268,6 +268,7 @@ function ExtractionCard({ extraction }: { extraction: Extraction }) {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0"
+                suppressHydrationWarning
               >
                 <MoreVertical className="h-4 w-4" />
                 <span className="sr-only">Open menu</span>

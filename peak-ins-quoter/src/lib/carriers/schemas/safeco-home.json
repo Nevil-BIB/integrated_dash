@@ -138,7 +138,7 @@
           "key": "applicant.coApplicantFirstName",
           "label": "Co-Applicant First Name",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "applicant.coApplicantPresent",
             "value": "Yes"
@@ -148,7 +148,7 @@
           "key": "applicant.coApplicantLastName",
           "label": "Co-Applicant Last Name",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "applicant.coApplicantPresent",
             "value": "Yes"
@@ -158,7 +158,7 @@
           "key": "applicant.coApplicantBirthDate",
           "label": "Co-Applicant Birth Date",
           "type": "date",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "applicant.coApplicantPresent",
             "value": "Yes"
@@ -168,7 +168,7 @@
           "key": "applicant.coApplicantMaritalStatus",
           "label": "Co-Applicant Marital Status",
           "type": "dropdown",
-          "required": false,
+          "required": true,
           "options": ["Single", "Married", "Divorced", "Widowed", "Domestic Partner"],
           "conditionalOn": {
             "key": "applicant.coApplicantPresent",
@@ -221,8 +221,12 @@
           "required": true,
           "options": [
             "New property customer to Safeco",
-            "Existing Safeco customer",
-            "Remarketed"
+            "Rewrite of policy lapsed > 60 days",
+            "Rewrite of existing Safeco customer lapsed < 60 days",
+            "Existing Safeco home customer moving to new location or adding secondary",
+            "Other reason for policy request for existing Safeco property customer",
+            "Carrier Consolidation/Book Transfer",
+            "Loyalty Rewrite"
           ]
         },
         {
@@ -280,7 +284,7 @@
           "key": "address.locationAddressLine1",
           "label": "Location Address Line 1",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "address.locationSameAsMailing",
             "value": "No"
@@ -300,7 +304,7 @@
           "key": "address.locationCity",
           "label": "Location City",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "address.locationSameAsMailing",
             "value": "No"
@@ -310,7 +314,7 @@
           "key": "address.locationState",
           "label": "Location State",
           "type": "dropdown",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "address.locationSameAsMailing",
             "value": "No"
@@ -320,7 +324,7 @@
           "key": "address.locationZipCode",
           "label": "Location ZIP",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "address.locationSameAsMailing",
             "value": "No"
@@ -384,7 +388,7 @@
           "key": "underwriting.businessType",
           "label": "Business Type",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "underwriting.businessOnPremises",
             "value": "Yes"
@@ -394,7 +398,7 @@
           "key": "underwriting.businessExplanation",
           "label": "Business Explanation",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "underwriting.businessOnPremises",
             "value": "Yes"
@@ -404,7 +408,7 @@
           "key": "underwriting.businessIncidental",
           "label": "Business Incidental",
           "type": "dropdown",
-          "required": false,
+          "required": true,
           "options": ["Yes", "No"],
           "conditionalOn": {
             "key": "underwriting.businessOnPremises",
@@ -415,7 +419,7 @@
           "key": "underwriting.businessEmployees",
           "label": "Business Employees",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "underwriting.businessOnPremises",
             "value": "Yes"
@@ -487,7 +491,29 @@
           "key": "underwriting.currentCarrier",
           "label": "Current Carrier",
           "type": "text",
+          "required": true,
+          "conditionalOn": {
+            "key": "underwriting.currentlyInsured",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.customerSinceDate",
+          "label": "Customer Has Had Safeco Property Insurance Since",
+          "type": "date",
           "required": false,
+          "description": "Required by Safeco when Current Carrier is Safeco.",
+          "conditionalOn": {
+            "key": "underwriting.currentlyInsured",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.priorSafecoPolicyNumber",
+          "label": "Prior Safeco Policy Number",
+          "type": "text",
+          "required": false,
+          "description": "Required by Safeco when Current Carrier is Safeco.",
           "conditionalOn": {
             "key": "underwriting.currentlyInsured",
             "value": "Yes"
@@ -504,7 +530,7 @@
           "key": "underwriting.dwellingHazardDetails",
           "label": "Dwelling Hazard Details",
           "type": "text",
-          "required": false,
+          "required": true,
           "description": "Required when Dwelling Hazards is Yes. Use comma-separated values from: Unrepaired damages from a prior loss, In-ground pool, Wood/coal/pellet stove, Above-ground trampoline without safety net, Uncorrected code/fire violations or slip/fall hazards, Improvements without permits, Roof leaks/overhang/missing shingles.",
           "conditionalOn": {
             "key": "underwriting.dwellingHazards",
@@ -528,7 +554,7 @@
           "key": "underwriting.insuranceCancellationExplanation",
           "label": "Cancellation Explanation",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "underwriting.insuranceCancelled",
             "value": "Yes"
@@ -563,7 +589,7 @@
           "key": "underwriting.policyType",
           "label": "Other Policy Type",
           "type": "text",
-          "required": false,
+          "required": true,
           "conditionalOn": {
             "key": "underwriting.hasOtherSafecoPolicy",
             "value": "Yes"

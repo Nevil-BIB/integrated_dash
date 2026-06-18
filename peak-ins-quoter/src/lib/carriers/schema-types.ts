@@ -21,7 +21,10 @@ export interface CarrierSchemaField {
   conditionalOn?:
     | { key: string; value: string }
     | { key: string; notValue: string }
-  itemSchema?: Record<string, { type: string; options?: string[]; notes?: string }>
+  itemSchema?: Record<
+    string,
+    { type: string; label?: string; required?: boolean; options?: string[]; notes?: string }
+  >
 }
 
 export interface CarrierSchemaSection {

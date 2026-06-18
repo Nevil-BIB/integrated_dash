@@ -108,6 +108,7 @@ describe('safeco-home schema integration', () => {
       'underwriting.horsesLivestock': field('No'),
       'underwriting.monthsOccupied': field('9-12 (Primary)'),
       'underwriting.currentlyInsured': field('Yes'),
+      'underwriting.currentCarrier': field('Travelers'),
       'underwriting.dwellingHazards': field('No'),
       'underwriting.occupants': field('3'),
       'underwriting.insuranceCancelled': field('No'),

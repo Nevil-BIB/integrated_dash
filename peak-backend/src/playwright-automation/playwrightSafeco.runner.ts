@@ -1,5 +1,6 @@
 import axios from "axios";
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type LaunchOptions, type Page } from "playwright";
 import { logger } from "../utils/logger";
@@ -73,6 +74,7 @@ type SafecoUnderwriting = {
   monthsOccupied: string;
   currentlyInsured: string;
   currentCarrier?: string;
+  customerSinceDate?: string;
   dwellingHazards: "Yes" | "No";
   dwellingHazardDetails?: string[];
   occupants: string;
@@ -483,6 +485,7 @@ function normalizeSafecoPayload(raw: unknown): SafecoPayload {
     currentlyInsured:
       pickString("underwriting.currentlyInsured", "insuranceDetails.currentlyInsured") ?? "No, Unknown Reason",
     currentCarrier: pickString("underwriting.currentCarrier", "insuranceDetails.currentInsuranceCompany"),
+    customerSinceDate: toMmDdYyyy(pickString("underwriting.customerSinceDate"), ""),
     dwellingHazards: pickYesNo("underwriting.dwellingHazards") ?? "No",
     dwellingHazardDetails: pickStringArray(
       "underwriting.dwellingHazardDetails",
@@ -502,7 +505,7 @@ function normalizeSafecoPayload(raw: unknown): SafecoPayload {
     ownershipYear: pickString("underwriting.ownershipYear") ?? defaultOwnershipYear,
     hasOtherSafecoPolicy: pickYesNo("underwriting.hasOtherSafecoPolicy"),
     policyType: pickString("underwriting.policyType"),
-    policyNumber: pickString("underwriting.policyNumber"),
+    policyNumber: pickString("underwriting.policyNumber", "underwriting.priorSafecoPolicyNumber"),
     notYetIssued: pickYesNo("underwriting.notYetIssued"),
   };
 
@@ -530,6 +533,27 @@ function hasQuoteDateFutureValidation(items: string[]): boolean {
   return items.some((item) => /quote date.*cannot be in the future/i.test(item));
 }
 
+function hasPriorCarrierSafecoValidation(items: string[]): boolean {
+  return items.some((item) => /prior carrier.*cannot be.*safeco/i.test(item));
+}
+
+function hasPriorSafecoPolicyFieldsRequiredValidation(items: string[]): boolean {
+  const blob = items.join(" ").toLowerCase();
+  return (
+    blob.includes("customer has had safeco property insurance since") ||
+    blob.includes("prior safeco policy number")
+  ) && blob.includes("requires input");
+}
+
+function hasPriorSafecoPolicyInvalidValidation(items: string[]): boolean {
+  const blob = items.join(" ").toLowerCase();
+  return (
+    blob.includes("safeco policy number entered is not valid") ||
+    blob.includes("must choose a policy type") ||
+    blob.includes("cross reference")
+  );
+}
+
 async function forceSafecoQuoteDateToToday(page: Page): Promise<void> {
   const todayPortal = formatDateInTimeZone(new Date(), SAFECO_PORTAL_TIMEZONE);
   const quoteDateSelectors = ["#PolicyQuoteDate", 'input[id*="PolicyQuoteDate"]', 'input[id*="QuoteDate"]'];
@@ -549,6 +573,232 @@ async function forceSafecoQuoteDateToToday(page: Page): Promise<void> {
     await input.dispatchEvent("blur").catch(() => undefined);
     const current = await input.inputValue().catch(() => "");
     if (current.trim()) return;
+  }
+}
+
+async function forcePriorCarrierNonSafeco(page: Page): Promise<boolean> {
+  const selectors = ["#PolicyPrevInsuranceCarrierValue", '[id*="PrevInsuranceCarrier"]'];
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    if (!(await locator.count().catch(() => 0))) continue;
+
+    const replacementValue = await locator
+      .locator("option")
+      .evaluateAll((nodes) => {
+        for (const node of nodes) {
+          const opt = node as HTMLOptionElement;
+          const value = String(opt.value ?? "").trim();
+          const text = String(opt.label || opt.text || "").trim().toLowerCase();
+          if (!value) continue;
+          if (text.includes("safeco")) continue;
+          return value;
+        }
+        return "";
+      })
+      .catch(() => "");
+
+    if (!replacementValue) continue;
+
+    await locator.selectOption({ value: replacementValue }).catch(() => undefined);
+    await locator.dispatchEvent("input").catch(() => undefined);
+    await locator.dispatchEvent("change").catch(() => undefined);
+    return true;
+  }
+  return false;
+}
+
+async function forcePriorSafecoHistoryFields(page: Page): Promise<boolean> {
+  const todayPortal = formatDateInTimeZone(new Date(), SAFECO_PORTAL_TIMEZONE);
+  const [mm, , yyyy] = todayPortal.split("/");
+  const fallbackSinceDate = `${mm}/01/${String(Number(yyyy) - 1)}`;
+  let changed = false;
+
+  const policyTypeSelectors = ["#PolicyXrefPolicies1PolicyType", 'select[id*="XrefPolicies"][id*="PolicyType"]'];
+  for (const selector of policyTypeSelectors) {
+    const select = page.locator(selector).first();
+    if (!(await select.count().catch(() => 0))) continue;
+    const current = await select.inputValue().catch(() => "");
+    if (!current.trim()) {
+      const firstNonEmpty = await select
+        .locator("option")
+        .evaluateAll((nodes) => {
+          const opt = nodes.find((n) => ((n as HTMLOptionElement).value ?? "").trim().length > 0);
+          return opt ? (opt as HTMLOptionElement).value : "";
+        })
+        .catch(() => "");
+      if (firstNonEmpty) {
+        await select.selectOption({ value: firstNonEmpty }).catch(() => undefined);
+        await select.dispatchEvent("input").catch(() => undefined);
+        await select.dispatchEvent("change").catch(() => undefined);
+        changed = true;
+      }
+    }
+    break;
+  }
+
+  const sinceInputSelectors = [
+    "#PolicyXrefPolicies1PolicySince",
+    "#PolicyXrefPolicies1SinceDate",
+    'input[id*="XrefPolicies"][id*="Since"]',
+    'input[name*="XrefPolicies"][name*="Since"]',
+    'input[id*="Safeco"][id*="Since"]',
+    'input[name*="Safeco"][name*="Since"]',
+  ];
+  for (const selector of sinceInputSelectors) {
+    const input = page.locator(selector).first();
+    if (!(await input.count().catch(() => 0))) continue;
+    await input.fill(fallbackSinceDate).catch(() => undefined);
+    await input.dispatchEvent("input").catch(() => undefined);
+    await input.dispatchEvent("change").catch(() => undefined);
+    changed = true;
+    break;
+  }
+
+  const sinceLabelSet = await (async (): Promise<boolean> => {
+    const label = page.getByText(/customer has had safeco property insurance since/i).first();
+    if (!(await label.isVisible().catch(() => false))) return false;
+    const row = label.locator("xpath=ancestor::*[self::tr or self::div][1]");
+    const dateInput = row.locator("input").first();
+    if (await dateInput.isVisible().catch(() => false)) {
+      await dateInput.fill(fallbackSinceDate).catch(() => undefined);
+      await dateInput.dispatchEvent("input").catch(() => undefined);
+      await dateInput.dispatchEvent("change").catch(() => undefined);
+      return true;
+    }
+    return false;
+  })();
+  changed = changed || sinceLabelSet;
+
+  const policyNumberSelectors = [
+    "#PolicyXrefPolicies1PolicyNumber",
+    'input[id*="XrefPolicies"][id*="PolicyNumber"]',
+    'input[name*="XrefPolicies"][name*="PolicyNumber"]',
+    'input[id*="Prior"][id*="PolicyNumber"]',
+    'input[name*="Prior"][name*="PolicyNumber"]',
+  ];
+  const notYetIssuedSelectors = [
+    "#PolicyXrefPolicies1NotYetIssuedYN",
+    'input[id*="XrefPolicies"][id*="NotYetIssued"]',
+    'input[name*="XrefPolicies"][name*="NotYetIssued"]',
+  ];
+  let notYetIssuedChecked = false;
+  for (const selector of notYetIssuedSelectors) {
+    const checkbox = page.locator(selector).first();
+    if (!(await checkbox.count().catch(() => 0))) continue;
+    await checkbox.check({ force: true }).catch(() => checkbox.click({ force: true }).catch(() => undefined));
+    notYetIssuedChecked = await checkbox.isChecked().catch(() => false);
+    if (notYetIssuedChecked) {
+      changed = true;
+      break;
+    }
+  }
+
+  for (const selector of policyNumberSelectors) {
+    const input = page.locator(selector).first();
+    if (!(await input.count().catch(() => 0))) continue;
+    const current = await input.inputValue().catch(() => "");
+    if (notYetIssuedChecked && current.trim()) {
+      await input.fill("").catch(() => undefined);
+      await input.dispatchEvent("input").catch(() => undefined);
+      await input.dispatchEvent("change").catch(() => undefined);
+      changed = true;
+    }
+    break;
+  }
+
+  const policyLabelSet = await (async (): Promise<boolean> => {
+    const label = page.getByText(/prior safeco policy number/i).first();
+    if (!(await label.isVisible().catch(() => false))) return false;
+    const row = label.locator("xpath=ancestor::*[self::tr or self::div][1]");
+    const input = row.locator("input").first();
+    if (await input.isVisible().catch(() => false)) {
+      const current = await input.inputValue().catch(() => "");
+      if (notYetIssuedChecked && current.trim()) {
+        await input.fill("").catch(() => undefined);
+        await input.dispatchEvent("input").catch(() => undefined);
+        await input.dispatchEvent("change").catch(() => undefined);
+      }
+      return true;
+    }
+    return false;
+  })();
+  changed = changed || policyLabelSet;
+
+  return changed;
+}
+
+async function fillSafecoHistoryIfVisible(
+  page: Page,
+  opts?: { sinceDate?: string; policyNumber?: string; notYetIssued?: "Yes" | "No" },
+): Promise<void> {
+  const todayPortal = formatDateInTimeZone(new Date(), SAFECO_PORTAL_TIMEZONE);
+  const [mm, , yyyy] = todayPortal.split("/");
+  const fallbackSinceDate = opts?.sinceDate?.trim() || `${mm}/01/${String(Number(yyyy) - 1)}`;
+
+  const sinceSelectors = [
+    "#PolicyCustomerSinceDate",
+    "#PolicyXrefPolicies1PolicySince",
+    "#PolicyXrefPolicies1SinceDate",
+    'input[id*="CustomerSinceDate"]',
+    'input[name*="CustomerSinceDate"]',
+    'input[id*="XrefPolicies"][id*="Since"]',
+    'input[name*="XrefPolicies"][name*="Since"]',
+    'input[id*="Safeco"][id*="Since"]',
+    'input[name*="Safeco"][name*="Since"]',
+  ];
+  for (const selector of sinceSelectors) {
+    const input = page.locator(selector).first();
+    if (!(await input.count().catch(() => 0))) continue;
+    const current = await input.inputValue().catch(() => "");
+    if (!current.trim()) {
+      await input.fill(fallbackSinceDate).catch(() => undefined);
+      await input.dispatchEvent("input").catch(() => undefined);
+      await input.dispatchEvent("change").catch(() => undefined);
+    }
+    break;
+  }
+
+  const notYetIssuedSelectors = [
+    "#PolicyXrefPolicies1NotYetIssuedYN",
+    'input[id*="XrefPolicies"][id*="NotYetIssued"]',
+    'input[name*="XrefPolicies"][name*="NotYetIssued"]',
+  ];
+  let notYetIssuedChecked = false;
+  if (opts?.notYetIssued === "Yes") {
+    for (const selector of notYetIssuedSelectors) {
+      const checkbox = page.locator(selector).first();
+      if (!(await checkbox.count().catch(() => 0))) continue;
+      await checkbox.check({ force: true }).catch(() => checkbox.click({ force: true }).catch(() => undefined));
+      notYetIssuedChecked = await checkbox.isChecked().catch(() => false);
+      if (notYetIssuedChecked) break;
+    }
+  }
+
+  const policyNumberSelectors = [
+    "#PolicyPrevInsurancePolicyNumber",
+    "#PolicyXrefPolicies1PolicyNumber",
+    'input[id*="PrevInsurancePolicyNumber"]',
+    'input[name*="PrevInsurancePolicyNumber"]',
+    'input[id*="XrefPolicies"][id*="PolicyNumber"]',
+    'input[name*="XrefPolicies"][name*="PolicyNumber"]',
+    'input[id*="Prior"][id*="PolicyNumber"]',
+    'input[name*="Prior"][name*="PolicyNumber"]',
+  ];
+  for (const selector of policyNumberSelectors) {
+    const input = page.locator(selector).first();
+    if (!(await input.count().catch(() => 0))) continue;
+    if (notYetIssuedChecked) {
+      await input.fill("").catch(() => undefined);
+      await input.dispatchEvent("input").catch(() => undefined);
+      await input.dispatchEvent("change").catch(() => undefined);
+      break;
+    }
+    if (opts?.policyNumber && opts.policyNumber.trim()) {
+      await input.fill(opts.policyNumber.trim()).catch(() => undefined);
+      await input.dispatchEvent("input").catch(() => undefined);
+      await input.dispatchEvent("change").catch(() => undefined);
+    }
+    break;
   }
 }
 
@@ -818,6 +1068,21 @@ async function clickContinue(page: Page): Promise<void> {
           await closeSafecoModal(page);
           continue;
         }
+        if (retry === 0 && hasPriorCarrierSafecoValidation(blockedItems)) {
+          await forcePriorCarrierNonSafeco(page);
+          await closeSafecoModal(page);
+          continue;
+        }
+        if (retry === 0 && hasPriorSafecoPolicyFieldsRequiredValidation(blockedItems)) {
+          await forcePriorSafecoHistoryFields(page);
+          await closeSafecoModal(page);
+          continue;
+        }
+        if (retry === 0 && hasPriorSafecoPolicyInvalidValidation(blockedItems)) {
+          await forcePriorSafecoHistoryFields(page);
+          await closeSafecoModal(page);
+          continue;
+        }
         throw new Error(`[Safeco] Continue blocked by required fields: ${blockedItems.join(" | ")}`);
       }
     }
@@ -829,6 +1094,21 @@ async function clickContinue(page: Page): Promise<void> {
         if (!blockedItems.length) return;
         if (retry === 0 && hasQuoteDateFutureValidation(blockedItems)) {
           await forceSafecoQuoteDateToToday(page);
+          await closeSafecoModal(page);
+          continue;
+        }
+        if (retry === 0 && hasPriorCarrierSafecoValidation(blockedItems)) {
+          await forcePriorCarrierNonSafeco(page);
+          await closeSafecoModal(page);
+          continue;
+        }
+        if (retry === 0 && hasPriorSafecoPolicyFieldsRequiredValidation(blockedItems)) {
+          await forcePriorSafecoHistoryFields(page);
+          await closeSafecoModal(page);
+          continue;
+        }
+        if (retry === 0 && hasPriorSafecoPolicyInvalidValidation(blockedItems)) {
+          await forcePriorSafecoHistoryFields(page);
           await closeSafecoModal(page);
           continue;
         }
@@ -899,6 +1179,10 @@ async function advanceUntilAnyVisible(
     const visibleAfterContinue = await waitForAnyVisible(page, selectors, 4000);
     if (visibleAfterContinue) return visibleAfterContinue;
   }
+  const blockedAtEnd = await readSafecoRequiredModalItems(page);
+  if (blockedAtEnd.length) {
+    throw new Error(`[Safeco] Continue blocked by required fields: ${blockedAtEnd.join(" | ")}`);
+  }
   throw new Error(`Expected selectors were not visible after continuing: ${selectors.join(" | ")}`);
 }
 
@@ -947,6 +1231,28 @@ async function ensureUnderwritingSectionReady(page: Page): Promise<void> {
   await clickContinue(page).catch(() => undefined);
 }
 
+async function advanceFromUnderwriting(page: Page): Promise<"applicant" | "losses" | "dwelling"> {
+  const applicantSelectors = [
+    "#PolicyDwellingApplicantFirstName",
+    'input[name="PolicyDwellingApplicantSocialSecurityNumberFirstThree"]',
+    'input[name="PolicyDwellingCoApplicantSocialSecurityNumberFirstThree"]',
+  ];
+  const lossSelectors = [
+    "#PolicySPILosses1LossDate",
+    "#PolicySPILosses1LossAmount",
+    "#PolicySPILosses1LossCategory",
+    "input[name='PolicyDwellingLossesYN']",
+    "input[name='PolicyLossesYN']",
+  ];
+  const dwellingSelectors = ['label[for="PolicyDwellingOutdatedElectricalYNY"]'];
+  const all = [...applicantSelectors, ...lossSelectors, ...dwellingSelectors];
+
+  const marker = await advanceUntilAnyVisible(page, all, 3);
+  if (applicantSelectors.includes(marker)) return "applicant";
+  if (lossSelectors.includes(marker)) return "losses";
+  return "dwelling";
+}
+
 async function fillFirstPresent(page: Page, selectors: string[], value: string | undefined): Promise<void> {
   if (!value) return;
   for (const selector of selectors) {
@@ -969,6 +1275,36 @@ async function selectFirstPresent(page: Page, selectors: string[], value: string
       return;
     }
   }
+}
+
+async function selectRequiredFirstPresent(
+  page: Page,
+  selectors: string[],
+  value: string | undefined,
+  fieldName: string,
+): Promise<void> {
+  let sawVisible = false
+  for (const selector of selectors) {
+    await closeSafecoModal(page)
+    const locator = page.locator(selector).first()
+    if (await locator.isVisible().catch(() => false)) {
+      sawVisible = true
+      const existing = await locator.inputValue().catch(() => "")
+      if (existing.trim()) return
+      if (value) {
+        await selectByLabelOrValue(page, selector, value)
+      }
+      const selected = await locator.inputValue().catch(() => existing)
+      if (selected.trim()) return
+    }
+  }
+  if (!value) {
+    throw new Error(`[Safeco] Missing value for required field: ${fieldName}`)
+  }
+  if (sawVisible) {
+    throw new Error(`[Safeco] Required field "${fieldName}" is visible but remains empty.`)
+  }
+  throw new Error(`[Safeco] Could not select required field "${fieldName}" using selectors: ${selectors.join(" | ")}`)
 }
 
 async function selectRequiredField(
@@ -1114,15 +1450,21 @@ async function selectRelationshipToInsuredRequired(
   const desired = (value ?? "Spouse").trim() || "Spouse";
   const selectors = [
     "#PolicyDwellingCoApplicantRelationshipToInsured",
+    "#PolicyDwellingApplicantRelationshipToInsured",
+    "#PolicyCoApplicantRelationshipToInsured",
+    "select[id*='RelationshipToInsured']",
+    "select[name*='RelationshipToInsured']",
     "select[id*='CoApplicantRelationshipToInsured']",
     "select[name*='CoApplicantRelationshipToInsured']",
   ];
+  let sawField = false;
 
   for (const selector of selectors) {
     const locator = page.locator(selector).first();
     if (!(await locator.count().catch(() => 0))) {
       continue;
     }
+    sawField = true;
 
     await selectByLabelOrValue(page, selector, desired).catch(() => undefined);
     // Fallback for hidden/non-standard selects: set directly and trigger change handlers.
@@ -1167,8 +1509,18 @@ async function selectRelationshipToInsuredRequired(
     }
   }
 
-  const selectedByLabel = await selectByNearbyLabelText(page, /relationship to insured/i, desired).catch(() => false);
+  const selectedByLabel = await selectByNearbyLabelText(
+    page,
+    /relationship to insured|relationship to applicant|co-?applicant relationship/i,
+    desired,
+  ).catch(() => false);
   if (selectedByLabel) {
+    return;
+  }
+
+  if (!sawField) {
+    // Some Safeco flows don't render this question on the current step.
+    // Defer to page-level validation on continue instead of failing early.
     return;
   }
 
@@ -1181,6 +1533,10 @@ async function selectRelationshipToInsuredIfVisible(
 ): Promise<void> {
   const selectors = [
     "#PolicyDwellingCoApplicantRelationshipToInsured",
+    "#PolicyDwellingApplicantRelationshipToInsured",
+    "#PolicyCoApplicantRelationshipToInsured",
+    "select[id*='RelationshipToInsured']",
+    "select[name*='RelationshipToInsured']",
     "select[id*='CoApplicantRelationshipToInsured']",
     "select[name*='CoApplicantRelationshipToInsured']",
   ];
@@ -1426,7 +1782,7 @@ async function selectAdditionalInterests(page: Page, value: "Yes" | "No"): Promi
   throw new Error(`[Safeco] Could not select Additional Interests as "${value}".`);
 }
 
-async function selectLossesYesNoRequired(page: Page, value: "Yes" | "No"): Promise<void> {
+async function selectLossesYesNoRequired(page: Page, value: "Yes" | "No"): Promise<boolean> {
   const suffix = value === "Yes" ? "Y" : "N";
   const fastNames = [
     "PolicyDwellingLossesYN",
@@ -1436,9 +1792,17 @@ async function selectLossesYesNoRequired(page: Page, value: "Yes" | "No"): Promi
     "PolicyDwellingPriorLossesYN",
   ];
 
+  let sawAnyControl = false;
   for (const name of fastNames) {
+    const present = await page
+      .locator(`input[type="radio"][name="${name}"][value="Y"], input[type="radio"][name="${name}"][value="N"]`)
+      .count()
+      .catch(() => 0);
+    if (present > 0) {
+      sawAnyControl = true;
+    }
     const ok = await setRadioByNameValueFast(page, name, suffix);
-    if (ok) return;
+    if (ok) return true;
   }
 
   try {
@@ -1447,7 +1811,7 @@ async function selectLossesYesNoRequired(page: Page, value: "Yes" | "No"): Promi
       ["PolicyDwellingLossesYN", "PolicyLossesYN", "PolicyDwellingAnyLossesYN", "PolicySPILossesYN", "PolicyDwellingPriorLossesYN"],
       value,
     );
-    return;
+    return true;
   } catch {
     // Continue to fallbacks.
   }
@@ -1457,14 +1821,18 @@ async function selectLossesYesNoRequired(page: Page, value: "Yes" | "No"): Promi
     /number of losses incurred in the last 5 years|losses incurred in the last 5 years|loss(es)? in the last 5 years|prior losses/i,
     value,
   ).catch(() => false);
-  if (clickedByText) return;
+  if (clickedByText) return true;
 
   const clickedByFragments = await clickYesNoByNameFragments(
     page,
     ["Losses", "SPILosses", "DwellingLosses", "PriorLosses", "AnyLosses"],
     value,
   );
-  if (clickedByFragments) return;
+  if (clickedByFragments) return true;
+
+  if (!sawAnyControl) {
+    return false;
+  }
 
   throw new Error(`[Safeco] Could not select losses Yes/No as "${value}" using known selectors and fallbacks.`);
 }
@@ -1515,13 +1883,24 @@ function toReasonForPolicyOptionValue(value: string | undefined): string | undef
   if (!value) return undefined;
   const normalized = value.trim().toLowerCase();
   if (!normalized) return undefined;
-  if (normalized === "n" || normalized.includes("new property customer")) return "N";
-  if (normalized === "l" || normalized.includes("lapsed > 60") || normalized.includes("lapsed >60")) return "L";
-  if (normalized === "c" || normalized.includes("lapsed < 60") || normalized.includes("lapsed <60")) return "C";
-  if (normalized === "r" || normalized.includes("moving to new location") || normalized.includes("secondary")) return "R";
-  if (normalized === "i" || normalized.includes("other reason")) return "I";
-  if (normalized === "a" || normalized.includes("carrier consolidation") || normalized.includes("book transfer")) return "A";
-  if (normalized === "t" || normalized.includes("loyalty rewrite")) return "T";
+
+  if (normalized === "n" || normalized === "new property customer to safeco") return "N";
+  if (normalized === "l" || normalized === "rewrite of policy lapsed > 60 days") return "L";
+  if (normalized === "c" || normalized === "rewrite of existing safeco customer lapsed < 60 days") return "C";
+  if (normalized === "r" || normalized === "existing safeco home customer moving to new location or adding secondary") return "R";
+  if (normalized === "i" || normalized === "other reason for policy request for existing safeco property customer") return "I";
+  if (normalized === "a" || normalized === "carrier consolidation/book transfer") return "A";
+  if (normalized === "t" || normalized === "loyalty rewrite") return "T";
+  if (normalized === "existing safeco customer" || normalized === "existing safeco property customer") return "I";
+
+  if (normalized.includes("new property customer")) return "N";
+  if (normalized.includes("lapsed > 60") || normalized.includes("lapsed >60")) return "L";
+  if (normalized.includes("lapsed < 60") || normalized.includes("lapsed <60")) return "C";
+  if (normalized.includes("moving to new location") || normalized.includes("adding secondary")) return "R";
+  if (normalized.includes("other reason")) return "I";
+  if (normalized.includes("carrier consolidation") || normalized.includes("book transfer")) return "A";
+  if (normalized.includes("loyalty rewrite")) return "T";
+  if (normalized.includes("existing safeco customer")) return "I";
   return undefined;
 }
 
@@ -1531,13 +1910,15 @@ async function selectReasonForPolicyRequired(page: Page, value: string | undefin
   }
 
   const selectors = ["#PolicyBusinessType", "#PolicyReasonForPolicy", 'select[id*="ReasonForPolicy"]'];
-  const desiredValue = toReasonForPolicyOptionValue(value) ?? "N";
+  const desiredValue = toReasonForPolicyOptionValue(value);
 
   for (const selector of selectors) {
     const locator = page.locator(selector).first();
     if (!(await locator.count().catch(() => 0))) continue;
 
-    await locator.selectOption({ value: desiredValue }).catch(() => undefined);
+    if (desiredValue) {
+      await locator.selectOption({ value: desiredValue }).catch(() => undefined);
+    }
     await locator.selectOption({ label: value }).catch(() => undefined);
     await locator.selectOption({ value }).catch(() => undefined);
     await locator.dispatchEvent("input").catch(() => undefined);
@@ -1553,14 +1934,12 @@ async function selectReasonForPolicyRequired(page: Page, value: string | undefin
         const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
         const desired = normalize(payload.desiredText);
         const byExactText = options.find((o) => normalize(o.label || o.text || "") === desired);
-        const byContainsText = options.find((o) => normalize(o.label || o.text || "").includes(desired));
         const byValue =
           options.find((o) => (o.value || "").trim().toUpperCase() === payload.desiredValue) ??
           options.find((o) => (o.value || "").trim() === payload.rawValue);
         const fallback =
-          byExactText ??
-          byContainsText ??
           byValue ??
+          byExactText ??
           options.find((o) => (o.value || "").trim().length > 0);
         if (!fallback) return "";
         select.value = fallback.value;
@@ -1619,6 +1998,124 @@ function normalizeCurrentlyInsuredValue(value: string | undefined): string | und
     return "No, First Time Home Buyer or Renter";
   }
   return value;
+}
+
+function isNewPropertyReasonForPolicy(value: string | undefined): boolean {
+  return toReasonForPolicyOptionValue(value) === "N";
+}
+
+function isExistingSafecoReasonForPolicy(value: string | undefined): boolean {
+  const code = toReasonForPolicyOptionValue(value);
+  return code === "C" || code === "R" || code === "I" || code === "A" || code === "T";
+}
+
+function isSafecoCarrierValue(value: string | undefined): boolean {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized.includes("safeco");
+}
+
+function normalizePriorCarrierOptionValue(value: string | undefined): string | undefined {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (!normalized) return undefined;
+
+  if (normalized.includes("allstate")) return "Allstate";
+  if (normalized.includes("state farm")) return "State Farm";
+  if (normalized.includes("travelers")) return "Travelers";
+  if (normalized.includes("farmers")) return "Farmers";
+  if (normalized.includes("nationwide")) return "Nationwide Group";
+  if (normalized.includes("liberty")) return "Liberty Mutual";
+  if (normalized.includes("chubb")) return "Chubb";
+  if (normalized.includes("auto-owners") || normalized.includes("auto owners")) return "Auto-Owners";
+  if (normalized.includes("usaa")) return "USAA";
+  if (normalized.includes("hartford")) return "Hartford";
+  if (normalized.includes("metlife")) return "MetLife Auto/Home";
+  if (normalized.includes("zurich")) return "Zurich";
+  if (normalized.includes("safeco")) return "Safeco";
+  if (normalized.includes("carrier not listed")) return "65";
+  return undefined;
+}
+
+async function selectPriorCarrier(page: Page, carrierRaw: string | undefined): Promise<void> {
+  if (!carrierRaw || !carrierRaw.trim()) return;
+  const selectors = ["#PolicyPrevInsuranceCarrierValue", '[id*="PrevInsuranceCarrier"]'];
+  const preferredValue = normalizePriorCarrierOptionValue(carrierRaw);
+
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    if (!(await locator.count().catch(() => 0))) continue;
+
+    if (preferredValue) {
+      await locator.selectOption({ value: preferredValue }).catch(() => undefined);
+      const selected = await locator.inputValue().catch(() => "");
+      if (selected && selected.trim()) return;
+    }
+
+    await locator.selectOption({ label: carrierRaw }).catch(() => undefined);
+    await locator.selectOption({ value: carrierRaw }).catch(() => undefined);
+    let selected = await locator.inputValue().catch(() => "");
+    if (selected && selected.trim()) return;
+
+    const matchedValue = await locator
+      .locator("option")
+      .evaluateAll((nodes, needle) => {
+        const n = needle.toLowerCase().trim();
+        const match = nodes.find((node) => {
+          const opt = node as HTMLOptionElement;
+          const label = String(opt.label || opt.text || "").toLowerCase();
+          const value = String(opt.value || "").toLowerCase();
+          return label.includes(n) || value.includes(n);
+        }) as HTMLOptionElement | undefined;
+        return match ? match.value : "";
+      }, carrierRaw)
+      .catch(() => "");
+
+    if (matchedValue) {
+      await locator.selectOption({ value: matchedValue }).catch(() => undefined);
+      selected = await locator.inputValue().catch(() => "");
+      if (selected && selected.trim()) return;
+    }
+  }
+}
+
+async function ensurePriorCarrierNotSafecoWhenNewProperty(page: Page): Promise<void> {
+  const selectors = ["#PolicyPrevInsuranceCarrierValue", '[id*="PrevInsuranceCarrier"]'];
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    if (!(await locator.count().catch(() => 0))) continue;
+
+    const selectedValue = await locator.inputValue().catch(() => "");
+    const selectedText = await locator
+      .locator("option:checked")
+      .first()
+      .textContent()
+      .catch(() => "");
+    const combinedSelected = `${selectedValue} ${selectedText}`.toLowerCase();
+    if (!combinedSelected.includes("safeco")) {
+      return;
+    }
+
+    const replacementValue = await locator
+      .locator("option")
+      .evaluateAll((nodes) => {
+        for (const node of nodes) {
+          const opt = node as HTMLOptionElement;
+          const value = String(opt.value ?? "").trim();
+          const text = String(opt.label || opt.text || "").trim().toLowerCase();
+          if (!value) continue;
+          if (text.includes("safeco")) continue;
+          return value;
+        }
+        return "";
+      })
+      .catch(() => "");
+
+    if (replacementValue) {
+      await locator.selectOption({ value: replacementValue }).catch(() => undefined);
+      await locator.dispatchEvent("input").catch(() => undefined);
+      await locator.dispatchEvent("change").catch(() => undefined);
+    }
+    return;
+  }
 }
 
 function normalizeDwellingHazardDetails(details: string[] | undefined): string[] {
@@ -1770,6 +2267,29 @@ async function setLossCountRequired(page: Page, value: string): Promise<void> {
   throw new Error(
     '[Safeco] Could not set required field "Number of losses incurred in last 5 years" using selectors: #PolicyDwellingNumberOfLosses | [id*="NumberOfLosses"]',
   );
+}
+
+async function setLossCountIfPresent(page: Page, value: string): Promise<boolean> {
+  const selectors = ["#PolicyDwellingNumberOfLosses", '[id*="NumberOfLosses"]'];
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    if (!(await locator.count().catch(() => 0))) continue;
+
+    const tagName = await locator.evaluate((el) => el.tagName.toLowerCase()).catch(() => "");
+    if (tagName === "select") {
+      await locator.selectOption({ value }).catch(() => undefined);
+      await locator.selectOption({ label: value }).catch(() => undefined);
+    } else {
+      await locator.fill(value).catch(() => undefined);
+      await locator.dispatchEvent("input").catch(() => undefined);
+      await locator.dispatchEvent("change").catch(() => undefined);
+      await locator.dispatchEvent("blur").catch(() => undefined);
+    }
+
+    const current = await locator.inputValue().catch(() => "");
+    if (current.trim()) return true;
+  }
+  return false;
 }
 
 function normalizeLossDateToken(token: string | undefined): string | undefined {
@@ -1938,17 +2458,96 @@ async function fetchOtpAfter(
   retries = 25,
   delayMs = 3000,
 ): Promise<string> {
+  const pollTimeoutMs = Number(process.env.SAFECO_OTP_POLL_TIMEOUT_MS ?? 12000);
+  const ipv4Agent = new https.Agent({ family: 4, keepAlive: true });
+  let lastError: unknown;
+  const extractOtpAndTime = (payload: unknown): { otp: string; time: number } => {
+    const scan = (node: unknown): { otp?: string; time?: number } => {
+      if (Array.isArray(node)) {
+        for (const item of node) {
+          const found = scan(item);
+          if (found.otp) return found;
+        }
+        return {};
+      }
+      if (!node || typeof node !== "object") return {};
+
+      const obj = node as Record<string, unknown>;
+      const otpCandidate = ["otp", "code", "passcode", "oneTimeCode"]
+        .map((k) => String(obj[k] ?? "").trim())
+        .find((v) => /^\d{4,8}$/.test(v));
+
+      const rawTime = obj.time ?? obj.timestamp ?? obj.ts ?? obj.createdAt ?? obj.receivedAt;
+      let timeCandidate = 0;
+      if (typeof rawTime === "number" && Number.isFinite(rawTime)) {
+        timeCandidate = rawTime < 1e12 ? rawTime * 1000 : rawTime;
+      } else if (typeof rawTime === "string" && rawTime.trim()) {
+        const asNum = Number(rawTime);
+        if (Number.isFinite(asNum) && asNum > 0) {
+          timeCandidate = asNum < 1e12 ? asNum * 1000 : asNum;
+        } else {
+          const parsed = Date.parse(rawTime);
+          if (Number.isFinite(parsed)) timeCandidate = parsed;
+        }
+      }
+
+      if (otpCandidate) {
+        return { otp: otpCandidate, time: timeCandidate || Date.now() };
+      }
+
+      for (const nestedKey of ["data", "body", "payload", "result", "item"]) {
+        if (obj[nestedKey] != null) {
+          const found = scan(obj[nestedKey]);
+          if (found.otp) return found;
+        }
+      }
+      return {};
+    };
+
+    const found = scan(payload);
+    return { otp: found.otp ?? "", time: found.time ?? 0 };
+  };
+
   for (let i = 0; i < retries; i++) {
-    const { data } = await axios.get<PlaywrightSafecoWebhookOtpPayload | PlaywrightSafecoWebhookOtpPayload[]>(webhookUrl);
-    const latest = Array.isArray(data) ? data[0] ?? {} : data ?? {};
-    const otp = String(latest.otp ?? "").trim();
-    const timestamp = Number(latest.time ?? 0);
-    if (otp && timestamp > requestedAt) {
-      return otp;
+    try {
+      const { data } = await axios.get<PlaywrightSafecoWebhookOtpPayload | PlaywrightSafecoWebhookOtpPayload[]>(
+        webhookUrl,
+        { timeout: pollTimeoutMs },
+      );
+      const { otp, time: timestamp } = extractOtpAndTime(data);
+      if (otp && timestamp > requestedAt) {
+        return otp;
+      }
+    } catch (err) {
+      lastError = err;
+      try {
+        const separator = webhookUrl.includes("?") ? "&" : "?";
+        const fallbackUrl = `${webhookUrl}${separator}t=${Date.now()}`;
+        const { data } = await axios.get<unknown>(fallbackUrl, {
+          timeout: pollTimeoutMs + 8000,
+          httpsAgent: ipv4Agent,
+        });
+        const { otp, time: timestamp } = extractOtpAndTime(data);
+        if (otp && timestamp > requestedAt) {
+          return otp;
+        }
+      } catch (fallbackErr) {
+        lastError = fallbackErr;
+        logger.warn("[Safeco] OTP webhook poll failed; retrying", {
+          attempt: i + 1,
+          retries,
+          timeoutMs: pollTimeoutMs,
+          primaryError: err instanceof Error ? err.message : String(err),
+          fallbackError: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+        });
+      }
     }
+
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
-  throw new Error("[Safeco] Timed out waiting for fresh OTP.");
+
+  const reason = lastError instanceof Error ? ` Last error: ${lastError.message}` : "";
+  throw new Error(`[Safeco] Timed out waiting for fresh OTP.${reason}`);
 }
 
 function looksLikePdfUrl(url: string): boolean {
@@ -2259,15 +2858,50 @@ export async function runSafecoPlaywright(
     await clickYesNo(page, ["PolicyDwellingCoApplicantYN"], payload.applicant.coApplicantPresent);
     await page.waitForTimeout(500).catch(() => undefined);
     if (payload.applicant.coApplicantPresent === "Yes") {
-      await fillIfPresent(page, "#PolicyDwellingCoApplicantFirstName", payload.applicant.coApplicantFirstName);
-      await fillIfPresent(page, "#PolicyDwellingCoApplicantLastName", payload.applicant.coApplicantLastName);
-      await fillIfPresent(page, "#PolicyDwellingCoApplicantBirthdate", payload.applicant.coApplicantBirthDate);
+      await fillRequiredField(
+        page,
+        [
+          "#PolicyDwellingCoApplicantFirstName",
+          'input[name*="CoApplicantFirstName"]',
+          'input[id*="CoApplicantFirstName"]',
+        ],
+        payload.applicant.coApplicantFirstName,
+        "Co-Applicant First Name",
+      );
+      await fillRequiredField(
+        page,
+        [
+          "#PolicyDwellingCoApplicantLastName",
+          'input[name*="CoApplicantLastName"]',
+          'input[id*="CoApplicantLastName"]',
+        ],
+        payload.applicant.coApplicantLastName,
+        "Co-Applicant Last Name",
+      );
+      await fillRequiredField(
+        page,
+        [
+          "#PolicyDwellingCoApplicantBirthdate",
+          'input[name*="CoApplicantBirthdate"]',
+          'input[id*="CoApplicantBirthdate"]',
+          'input[name*="CoApplicantBirthDate"]',
+          'input[id*="CoApplicantBirthDate"]',
+        ],
+        payload.applicant.coApplicantBirthDate,
+        "Co-Applicant Birth Date",
+      );
       await selectByLabelOrValue(
         page,
         "#PolicyDwellingCoApplicantMaritalStatus",
         payload.applicant.coApplicantMaritalStatus,
       );
-      await selectRelationshipToInsuredIfVisible(page, payload.applicant.relationshipToInsured).catch(() => undefined);
+      await selectRequiredFirstPresent(
+        page,
+        ["#PolicyDwellingCoApplicantMaritalStatus", 'select[id*="CoApplicantMaritalStatus"]'],
+        payload.applicant.coApplicantMaritalStatus,
+        "Co-Applicant Marital Status",
+      );
+      await selectRelationshipToInsuredRequired(page, payload.applicant.relationshipToInsured);
     }
 
     const phoneParts = parsePhoneParts(payload.applicant.primaryPhone);
@@ -2380,22 +3014,54 @@ export async function runSafecoPlaywright(
       }
     });
     if (sameAsMailing === "No") {
-      await fillFirstPresent(
+      await fillRequiredField(
         page,
-        ["#PolicyDwellingLocationAddressLine1", "#PolicyHomeDataLocationAddressLine1"],
+        [
+          "#PolicyDwellingLocationAddressLine1",
+          "#PolicyHomeDataLocationAddressLine1",
+          "#PolicyClientLocationAddressLine1",
+          'input[name*="LocationAddressLine1"]',
+          '[id*="LocationAddressLine1"]',
+        ],
         payload.address.locationAddressLine1,
+        "Location Address Line 1",
       );
       await fillIfPresent(page, "#PolicyDwellingLocationAddressLine2", payload.address.locationAddressLine2);
-      await fillFirstPresent(page, ["#PolicyDwellingLocationCity", "#PolicyHomeDataLocationCity"], payload.address.locationCity);
-      await selectFirstPresent(
+      await fillRequiredField(
         page,
-        ["#PolicyDwellingLocationState", "#PolicyHomeDataLocationState"],
-        normalizeStateLabel(payload.address.locationState),
+        [
+          "#PolicyDwellingLocationCity",
+          "#PolicyHomeDataLocationCity",
+          "#PolicyClientLocationCity",
+          'input[name*="LocationCity"]',
+          '[id*="LocationCity"]',
+        ],
+        payload.address.locationCity,
+        "Location City",
       );
-      await fillFirstPresent(
+      await selectRequiredField(
         page,
-        ["#PolicyDwellingLocationZipCode", "#PolicyHomeDataLocationZipCode"],
+        [
+          "#PolicyDwellingLocationState",
+          "#PolicyHomeDataLocationState",
+          "#PolicyClientLocationState",
+          'select[name*="LocationState"]',
+          '[id*="LocationState"]',
+        ],
+        normalizeStateLabel(payload.address.locationState),
+        "Location State",
+      );
+      await fillRequiredField(
+        page,
+        [
+          "#PolicyDwellingLocationZipCode",
+          "#PolicyHomeDataLocationZipCode",
+          "#PolicyClientLocationZipCode",
+          'input[name*="LocationZipCode"]',
+          '[id*="LocationZipCode"]',
+        ],
         payload.address.locationZipCode,
+        "Location ZIP Code",
       );
     }
 
@@ -2421,12 +3087,29 @@ export async function runSafecoPlaywright(
 
     await clickYesNo(page, ["PolicyDwellingBusinessOnPremisesYN"], payload.underwriting.businessOnPremises);
     if (payload.underwriting.businessOnPremises === "Yes") {
-      await selectByLabelOrValue(page, "#PolicyDwellingBusinessOnPremisesCategory", payload.underwriting.businessType);
-      await fillIfPresent(page, "#PolicyDwellingBusinessOnPremisesExpl", payload.underwriting.businessExplanation);
-      if (payload.underwriting.businessIncidental) {
-        await clickYesNo(page, ["PolicyDwellingBusinessOnPremisesIncidentalYN"], payload.underwriting.businessIncidental);
-      }
-      await fillIfPresent(page, "#PolicyDwellingBusinessOnPremisesNumEmployees", payload.underwriting.businessEmployees);
+      await selectRequiredField(
+        page,
+        ["#PolicyDwellingBusinessOnPremisesCategory", 'select[id*="BusinessOnPremisesCategory"]'],
+        payload.underwriting.businessType,
+        "Type of Business on Premises",
+      );
+      await fillRequiredField(
+        page,
+        ["#PolicyDwellingBusinessOnPremisesExpl", 'input[id*="BusinessOnPremisesExpl"]'],
+        payload.underwriting.businessExplanation,
+        "Business Explanation",
+      );
+      await clickYesNo(
+        page,
+        ["PolicyDwellingBusinessOnPremisesIncidentalYN"],
+        payload.underwriting.businessIncidental ?? "No",
+      );
+      await fillRequiredField(
+        page,
+        ["#PolicyDwellingBusinessOnPremisesNumEmployees", 'input[id*="BusinessOnPremisesNumEmployees"]'],
+        payload.underwriting.businessEmployees,
+        "Number of Business Employees",
+      );
     }
 
     await clickYesNo(page, ["PolicyDwellingRentedToOthersYN", "PolicyDwellingRentedToOthersSTB"], payload.underwriting.rentedToOthers);
@@ -2446,11 +3129,93 @@ export async function runSafecoPlaywright(
     const currentlyInsured = normalizeCurrentlyInsuredValue(payload.underwriting.currentlyInsured);
     await selectCurrentlyInsuredRequired(page, currentlyInsured);
     if (currentlyInsured === "Yes") {
-      await selectFirstPresent(
+      const existingSafecoReason = isExistingSafecoReasonForPolicy(payload.applicant.reasonForPolicy);
+      const carrierToUse =
+        isNewPropertyReasonForPolicy(payload.applicant.reasonForPolicy) && isSafecoCarrierValue(payload.underwriting.currentCarrier)
+          ? undefined
+          : payload.underwriting.currentCarrier;
+      await selectPriorCarrier(page, carrierToUse);
+      await selectRequiredFirstPresent(
         page,
         ["#PolicyPrevInsuranceCarrierValue", '[id*="PrevInsuranceCarrier"]'],
-        payload.underwriting.currentCarrier,
+        carrierToUse ?? payload.underwriting.currentCarrier,
+        "Current property insurance carrier",
       );
+      if (isNewPropertyReasonForPolicy(payload.applicant.reasonForPolicy)) {
+        await ensurePriorCarrierNotSafecoWhenNewProperty(page);
+      } else {
+        const selectedCarrierLooksSafeco = isSafecoCarrierValue(carrierToUse ?? payload.underwriting.currentCarrier);
+        await fillSafecoHistoryIfVisible(page, {
+          sinceDate: payload.underwriting.customerSinceDate,
+          policyNumber: payload.underwriting.policyNumber,
+          notYetIssued: payload.underwriting.notYetIssued,
+        });
+        if (existingSafecoReason || selectedCarrierLooksSafeco) {
+          const sinceDateSelectors = [
+            "#PolicyCustomerSinceDate",
+            "#PolicyXrefPolicies1PolicySince",
+            "#PolicyXrefPolicies1SinceDate",
+            'input[id*="CustomerSinceDate"]',
+            'input[name*="CustomerSinceDate"]',
+            'input[id*="XrefPolicies"][id*="Since"]',
+            'input[name*="XrefPolicies"][name*="Since"]',
+            'input[id*="Safeco"][id*="Since"]',
+            'input[name*="Safeco"][name*="Since"]',
+          ];
+          const sinceVisible = await waitForAnyVisible(page, sinceDateSelectors, 1800);
+          if (sinceVisible) {
+            const todayPortal = formatDateInTimeZone(new Date(), SAFECO_PORTAL_TIMEZONE);
+            const [mm, , yyyy] = todayPortal.split("/");
+            const sinceValue = payload.underwriting.customerSinceDate?.trim() || `${mm}/01/${String(Number(yyyy) - 1)}`;
+            await fillRequiredField(page, sinceDateSelectors, sinceValue, "Customer has had Safeco property insurance since");
+          }
+
+          const xrefTypeVisible = await waitForAnyVisible(
+            page,
+            ["#PolicyXrefPolicies1PolicyType", 'select[id*="XrefPolicies"][id*="PolicyType"]'],
+            1800,
+          );
+          if (xrefTypeVisible) {
+            await selectRequiredFirstPresent(
+              page,
+              ["#PolicyXrefPolicies1PolicyType", 'select[id*="XrefPolicies"][id*="PolicyType"]'],
+              payload.underwriting.policyType,
+              "Xref Policy Type",
+            );
+          }
+          const priorPolicyVisible = await waitForAnyVisible(
+            page,
+            [
+              "#PolicyXrefPolicies1PolicyNumber",
+              "#PolicyPrevInsurancePolicyNumber",
+              'input[id*="PrevInsurancePolicyNumber"]',
+              'input[name*="PrevInsurancePolicyNumber"]',
+              'input[id*="XrefPolicies"][id*="PolicyNumber"]',
+              'input[name*="XrefPolicies"][name*="PolicyNumber"]',
+              'input[id*="Prior"][id*="PolicyNumber"]',
+              'input[name*="Prior"][name*="PolicyNumber"]',
+            ],
+            1800,
+          );
+          if (priorPolicyVisible) {
+            await fillRequiredField(
+              page,
+              [
+                "#PolicyXrefPolicies1PolicyNumber",
+                "#PolicyPrevInsurancePolicyNumber",
+                'input[id*="PrevInsurancePolicyNumber"]',
+                'input[name*="PrevInsurancePolicyNumber"]',
+                'input[id*="XrefPolicies"][id*="PolicyNumber"]',
+                'input[name*="XrefPolicies"][name*="PolicyNumber"]',
+                'input[id*="Prior"][id*="PolicyNumber"]',
+                'input[name*="Prior"][name*="PolicyNumber"]',
+              ],
+              payload.underwriting.policyNumber,
+              "Prior Safeco policy number",
+            );
+          }
+        }
+      }
     }
     await clickYesNo(
       page,
@@ -2480,35 +3245,19 @@ export async function runSafecoPlaywright(
     );
     await clickYesNo(page, ["PolicyInsuranceCancelNonRenewYN"], payload.underwriting.insuranceCancelled);
     if (payload.underwriting.insuranceCancelled === "Yes") {
-      await fillIfPresent(
+      await fillRequiredField(
         page,
-        "#PolicyCancelDeclineNonRenewExpl",
+        ["#PolicyCancelDeclineNonRenewExpl", 'input[id*="CancelDeclineNonRenewExpl"]'],
         payload.underwriting.insuranceCancellationExplanation,
+        "Explanation for Insurance Cancellation or Nonrenewal",
       );
     }
     const normalizedLossCount = normalizeLossCount(payload.underwriting.lossesLastFiveYears);
     const lossCountNum = Number(normalizedLossCount);
     const lossesAnswer: "Yes" | "No" = lossCountNum > 0 ? "Yes" : "No";
-    await selectLossesYesNoRequired(page, lossesAnswer);
+    // Underwriting table requires NumberOfLosses directly (no losses Y/N in this section).
     await setLossCountRequired(page, normalizedLossCount);
-    if (lossesAnswer === "Yes") {
-      const lossDetailSelectors = ["#PolicySPILosses1LossDate", "#PolicySPILosses1LossAmount", "#PolicySPILosses1LossCategory"];
-      let lossDetailVisible = await waitForAnyVisible(page, lossDetailSelectors, 10000);
-      if (!lossDetailVisible) {
-        await clickYesNoByQuestionText(
-          page,
-          /number of losses incurred in the last 5 years|losses incurred in the last 5 years/i,
-          "Yes",
-        ).catch(() => false);
-        lossDetailVisible = await waitForAnyVisible(page, lossDetailSelectors, 7000);
-      }
-      if (!lossDetailVisible) {
-        throw new Error(
-          "[Safeco] Loss details section did not appear after selecting losses = Yes and setting Number of losses.",
-        );
-      }
-    }
-    await fillLossDetailFields(page, payload.underwriting.lossesLastFiveYears, Number(normalizedLossCount));
+    let lossesHandled = lossCountNum === 0;
     await selectRequiredField(
       page,
       ["#PolicyDwellingOwnershipMonth", '[id*="OwnershipMonth"]'],
@@ -2522,31 +3271,49 @@ export async function runSafecoPlaywright(
       "Date applicant became owner - Year",
     );
     if (payload.underwriting.hasOtherSafecoPolicy === "Yes") {
-      await selectByLabelOrValue(page, "#PolicyXrefPolicies1PolicyType", payload.underwriting.policyType);
-      await fillIfPresent(page, "#PolicyXrefPolicies1PolicyNumber", payload.underwriting.policyNumber);
-      if (!payload.underwriting.policyNumber && payload.underwriting.notYetIssued === "Yes") {
+      await selectRequiredField(
+        page,
+        ["#PolicyXrefPolicies1PolicyType", 'select[id*="XrefPolicies"][id*="PolicyType"]'],
+        payload.underwriting.policyType,
+        "Xref Policy Type",
+      );
+      if (payload.underwriting.notYetIssued === "Yes") {
         const notYetIssued = page.locator("#PolicyXrefPolicies1NotYetIssuedYN").first();
         if (await notYetIssued.isVisible().catch(() => false)) {
           await notYetIssued.check().catch(() => undefined);
         }
+      } else {
+        await fillRequiredField(
+          page,
+          ["#PolicyXrefPolicies1PolicyNumber", 'input[id*="XrefPolicies"][id*="PolicyNumber"]'],
+          payload.underwriting.policyNumber,
+          "Prior Safeco policy number",
+        );
       }
     }
 
+    // Safeco can enforce this field during transition even if losses controls moved pages.
+    await setLossCountIfPresent(page, normalizedLossCount).catch(() => undefined);
     updateStep("safeco_underwriting_continue");
     await selectRelationshipToInsuredIfVisible(page, payload.applicant.relationshipToInsured).catch(() => undefined);
+    let postUnderwritingStage: "applicant" | "losses" | "dwelling" = "applicant";
     try {
-      await advanceUntilVisible(page, "#PolicyDwellingApplicantFirstName", 2);
+      postUnderwritingStage = await advanceFromUnderwriting(page);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/relationship to insured/i.test(msg)) {
         await selectRelationshipToInsuredRequired(page, payload.applicant.relationshipToInsured);
         await clickContinue(page);
-        await advanceUntilVisible(page, "#PolicyDwellingApplicantFirstName", 1);
+        postUnderwritingStage = await advanceFromUnderwriting(page);
+      } else if (/number of losses incurred|number of losses.*requires input/i.test(msg)) {
+        await setLossCountIfPresent(page, normalizedLossCount);
+        await clickContinue(page);
+        postUnderwritingStage = await advanceFromUnderwriting(page);
       } else {
         throw err;
       }
     }
-    if (payload.applicant.applicantSSN) {
+    if (postUnderwritingStage === "applicant" && payload.applicant.applicantSSN) {
       const ssn = payload.applicant.applicantSSN.replace(/\D/g, "");
       if (ssn.length >= 9) {
         await fillIfPresent(page, 'input[name="PolicyDwellingApplicantSocialSecurityNumberFirstThree"]', ssn.slice(0, 3));
@@ -2554,15 +3321,40 @@ export async function runSafecoPlaywright(
         await fillIfPresent(page, 'input[name="PolicyDwellingApplicantSocialSecurityNumberLastFour"]', ssn.slice(5, 9));
       }
     }
-    if (payload.applicant.coApplicantPresent === "Yes") {
+    if (postUnderwritingStage === "applicant" && payload.applicant.coApplicantPresent === "Yes") {
       await selectRelationshipToInsuredRequired(page, payload.applicant.relationshipToInsured);
     }
-    if (payload.applicant.coApplicantPresent === "Yes" && payload.applicant.coApplicantSSN) {
+    if (postUnderwritingStage === "applicant" && payload.applicant.coApplicantPresent === "Yes" && payload.applicant.coApplicantSSN) {
       const ssn = payload.applicant.coApplicantSSN.replace(/\D/g, "");
       if (ssn.length >= 9) {
         await fillIfPresent(page, 'input[name="PolicyDwellingCoApplicantSocialSecurityNumberFirstThree"]', ssn.slice(0, 3));
         await fillIfPresent(page, 'input[name="PolicyDwellingCoApplicantSocialSecurityNumberMiddleTwo"]', ssn.slice(3, 5));
         await fillIfPresent(page, 'input[name="PolicyDwellingCoApplicantSocialSecurityNumberLastFour"]', ssn.slice(5, 9));
+      }
+    }
+
+    if (!lossesHandled && postUnderwritingStage !== "dwelling") {
+      updateStep("safeco_losses_deferred");
+      const deferredLossSelectors = [
+        "#PolicySPILosses1LossDate",
+        "#PolicySPILosses1LossAmount",
+        "#PolicySPILosses1LossCategory",
+        "input[name='PolicyDwellingLossesYN']",
+        "input[name='PolicyLossesYN']",
+      ];
+      const dwellingStartSelectors = ['label[for="PolicyDwellingOutdatedElectricalYNY"]'];
+      if (postUnderwritingStage !== "losses") {
+        await advanceUntilAnyVisible(page, [...deferredLossSelectors, ...dwellingStartSelectors], 3);
+      }
+
+      const lossDetailVisible = await waitForAnyVisible(page, deferredLossSelectors, 1500);
+      if (lossDetailVisible) {
+        // On deferred losses screens, some variants need Y/N first, others go straight to details.
+        await selectLossesYesNoRequired(page, lossesAnswer).catch(() => false);
+        await setLossCountIfPresent(page, normalizedLossCount).catch(() => undefined);
+        await fillLossDetailFields(page, payload.underwriting.lossesLastFiveYears, Number(normalizedLossCount));
+        lossesHandled = true;
+        await advanceUntilVisible(page, 'label[for="PolicyDwellingOutdatedElectricalYNY"]', 2);
       }
     }
 

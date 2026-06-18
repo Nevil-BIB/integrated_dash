@@ -1,0 +1,664 @@
+{
+  "id": "safeco-home",
+  "carrierId": "safeco",
+  "productType": "home",
+  "label": "Safeco Home",
+  "description": "Safeco homeowners quote payload",
+  "version": "1.0.0",
+  "automation": {
+    "route": "safeco",
+    "submitPath": "/api/generate-quote/playwright/safeco",
+    "statusPath": "/api/generate-quote/playwright/safeco/:jobId"
+  },
+  "payload": {
+    "supportsFlatKeys": false,
+    "supportsNestedObjects": true,
+    "supportsFieldsArray": true,
+    "notes": "Structured as quoteSetup/applicant/address/underwriting/dwellingInformation"
+  },
+  "formatRules": {
+    "date": "MM/DD/YYYY (accepts ISO YYYY-MM-DD input)",
+    "yesNo": ["Yes", "No"],
+    "checkbox": "yes/true/1/y => Yes; no/false/0/n => No",
+    "dropdown": "Prefer exact portal labels when visible"
+  },
+  "nonPayload": [
+    {
+      "id": "credentials",
+      "source": "env",
+      "keys": ["SAFECO_USERNAME", "SAFECO_PASSWORD"]
+    },
+    {
+      "id": "otpWebhook",
+      "source": "env",
+      "key": "SAFECO_OTP_WEBHOOK_URL"
+    },
+    {
+      "id": "loginUrl",
+      "source": "env",
+      "key": "SAFECO_URL",
+      "notes": "Safeco login URL"
+    }
+  ],
+  "sections": [
+    {
+      "id": "quote-setup",
+      "title": "Quote Setup",
+      "automationStep": "quote-setup",
+      "fields": [
+        {
+          "key": "quoteSetup.ratingState",
+          "label": "Rating State",
+          "type": "dropdown",
+          "required": true
+        },
+        {
+          "key": "quoteSetup.policyForm",
+          "label": "Policy Form",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Homeowners", "Renters", "Condo", "Landlord"]
+        },
+        {
+          "key": "quoteSetup.agentNumber",
+          "label": "Agent Number",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "quoteSetup.quoteDate",
+          "label": "Quote Date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "key": "quoteSetup.effectiveDate",
+          "label": "Effective Date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "key": "quoteSetup.agencyCustomerId",
+          "label": "Agency Customer Id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "quoteSetup.quoteDescription",
+          "label": "Quote Description",
+          "type": "text",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "applicant",
+      "title": "Applicant",
+      "automationStep": "applicant",
+      "fields": [
+        {
+          "key": "applicant.firstName",
+          "label": "First Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "applicant.middleName",
+          "label": "Middle Name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "applicant.lastName",
+          "label": "Last Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "applicant.birthDate",
+          "label": "Birth Date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "key": "applicant.maritalStatus",
+          "label": "Marital Status",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Single", "Married", "Divorced", "Widowed", "Domestic Partner"]
+        },
+        {
+          "key": "applicant.coApplicantPresent",
+          "label": "Co-Applicant Present",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "applicant.coApplicantFirstName",
+          "label": "Co-Applicant First Name",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "applicant.coApplicantPresent",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "applicant.coApplicantLastName",
+          "label": "Co-Applicant Last Name",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "applicant.coApplicantPresent",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "applicant.coApplicantBirthDate",
+          "label": "Co-Applicant Birth Date",
+          "type": "date",
+          "required": false,
+          "conditionalOn": {
+            "key": "applicant.coApplicantPresent",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "applicant.coApplicantMaritalStatus",
+          "label": "Co-Applicant Marital Status",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Single", "Married", "Divorced", "Widowed", "Domestic Partner"],
+          "conditionalOn": {
+            "key": "applicant.coApplicantPresent",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "applicant.applicantSSN",
+          "label": "Applicant SSN",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "applicant.relationshipToInsured",
+          "label": "Relationship To Insured",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Spouse", "Domestic Partner", "Child", "Other Relative", "Roommate", "Other"],
+          "conditionalOn": {
+            "key": "applicant.coApplicantPresent",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "applicant.coApplicantSSN",
+          "label": "Co-Applicant SSN",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "applicant.coApplicantPresent",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "applicant.primaryPhone",
+          "label": "Phone",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "applicant.email",
+          "label": "Email",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "applicant.reasonForPolicy",
+          "label": "Reason For Policy",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "New property customer to Safeco",
+            "Existing Safeco customer",
+            "Remarketed"
+          ]
+        },
+        {
+          "key": "applicant.additionalInterestsPresent",
+          "label": "Additional Interests Present",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        }
+      ]
+    },
+    {
+      "id": "address",
+      "title": "Address",
+      "automationStep": "address",
+      "fields": [
+        {
+          "key": "address.mailingAddressLine1",
+          "label": "Mailing Address Line 1",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "address.mailingAddressLine2",
+          "label": "Mailing Address Line 2",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "address.mailingCity",
+          "label": "Mailing City",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "address.mailingState",
+          "label": "Mailing State",
+          "type": "dropdown",
+          "required": true
+        },
+        {
+          "key": "address.mailingZipCode",
+          "label": "Mailing ZIP",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "address.locationSameAsMailing",
+          "label": "Location Same As Mailing",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "address.locationAddressLine1",
+          "label": "Location Address Line 1",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "address.locationSameAsMailing",
+            "value": "No"
+          }
+        },
+        {
+          "key": "address.locationAddressLine2",
+          "label": "Location Address Line 2",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "address.locationSameAsMailing",
+            "value": "No"
+          }
+        },
+        {
+          "key": "address.locationCity",
+          "label": "Location City",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "address.locationSameAsMailing",
+            "value": "No"
+          }
+        },
+        {
+          "key": "address.locationState",
+          "label": "Location State",
+          "type": "dropdown",
+          "required": false,
+          "conditionalOn": {
+            "key": "address.locationSameAsMailing",
+            "value": "No"
+          }
+        },
+        {
+          "key": "address.locationZipCode",
+          "label": "Location ZIP",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "address.locationSameAsMailing",
+            "value": "No"
+          }
+        }
+      ]
+    },
+    {
+      "id": "underwriting",
+      "title": "Underwriting",
+      "automationStep": "underwriting",
+      "fields": [
+        {
+          "key": "underwriting.underConstruction",
+          "label": "Under Construction",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "underwriting.constructionCompletedWithin12Months",
+          "label": "Construction Completed Within 12 Months",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Yes", "No"],
+          "conditionalOn": {
+            "key": "underwriting.underConstruction",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.licensedContractor",
+          "label": "Licensed Contractor",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Yes", "No"],
+          "conditionalOn": {
+            "key": "underwriting.underConstruction",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.contractorNamedInsured",
+          "label": "Contractor Named Insured",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Yes", "No"],
+          "conditionalOn": {
+            "key": "underwriting.underConstruction",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.businessOnPremises",
+          "label": "Business On Premises",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "underwriting.businessType",
+          "label": "Business Type",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "underwriting.businessOnPremises",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.businessExplanation",
+          "label": "Business Explanation",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "underwriting.businessOnPremises",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.businessIncidental",
+          "label": "Business Incidental",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Yes", "No"],
+          "conditionalOn": {
+            "key": "underwriting.businessOnPremises",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.businessEmployees",
+          "label": "Business Employees",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "underwriting.businessOnPremises",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.rentedToOthers",
+          "label": "Rented To Others",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "underwriting.undesirableAnimal",
+          "label": "Undesirable Animal",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "underwriting.dogsOwned",
+          "label": "Dogs Owned",
+          "type": "dropdown",
+          "required": true
+        },
+        {
+          "key": "underwriting.dogBreed",
+          "label": "Dog Breed Flag",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "underwriting.horsesLivestock",
+          "label": "Horses Or Livestock",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "underwriting.monthsOccupied",
+          "label": "Months Occupied",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "12 (Primary)",
+            "9-11 (Primary)",
+            "6-8 (Primary)",
+            "4-5 (Secondary)",
+            "1-3 (Secondary)",
+            "< 1 (Secondary)",
+            "Vacant or Unoccupied",
+            "Primarily Rented to Others"
+          ]
+        },
+        {
+          "key": "underwriting.currentlyInsured",
+          "label": "Currently Insured",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No, First Time Home Buyer or Renter",
+            "No, Prior Policy Lapsed/Not Active",
+            "No, Unknown Reason"
+          ]
+        },
+        {
+          "key": "underwriting.currentCarrier",
+          "label": "Current Carrier",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "underwriting.currentlyInsured",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.dwellingHazards",
+          "label": "Dwelling Hazards",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "underwriting.dwellingHazardDetails",
+          "label": "Dwelling Hazard Details",
+          "type": "text",
+          "required": false,
+          "description": "Required when Dwelling Hazards is Yes. Use comma-separated values from: Unrepaired damages from a prior loss, In-ground pool, Wood/coal/pellet stove, Above-ground trampoline without safety net, Uncorrected code/fire violations or slip/fall hazards, Improvements without permits, Roof leaks/overhang/missing shingles.",
+          "conditionalOn": {
+            "key": "underwriting.dwellingHazards",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.occupants",
+          "label": "Number Of Occupants",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "underwriting.insuranceCancelled",
+          "label": "Insurance Cancelled",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "underwriting.insuranceCancellationExplanation",
+          "label": "Cancellation Explanation",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "underwriting.insuranceCancelled",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.lossesLastFiveYears",
+          "label": "Losses Last Five Years",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "underwriting.ownershipMonth",
+          "label": "Ownership Month",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "underwriting.ownershipYear",
+          "label": "Ownership Year",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "underwriting.hasOtherSafecoPolicy",
+          "label": "Has Other Safeco Policy",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "underwriting.policyType",
+          "label": "Other Policy Type",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "underwriting.hasOtherSafecoPolicy",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.policyNumber",
+          "label": "Other Policy Number",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "underwriting.hasOtherSafecoPolicy",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "underwriting.notYetIssued",
+          "label": "Other Policy Not Yet Issued",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Yes", "No"],
+          "conditionalOn": {
+            "key": "underwriting.hasOtherSafecoPolicy",
+            "value": "Yes"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dwelling-information",
+      "title": "Dwelling Information",
+      "automationStep": "dwelling-information",
+      "fields": [
+        {
+          "key": "dwellingInformation.outdatedElectrical",
+          "label": "Outdated Electrical",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "dwellingInformation.dwellingLocatedIn",
+          "label": "Dwelling Located In",
+          "type": "dropdown",
+          "required": true,
+          "options": ["City", "Suburb", "District"]
+        },
+        {
+          "key": "dwellingInformation.roofMaterial",
+          "label": "Roof Material",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "dwellingInformation.roofRenovation",
+          "label": "Roof Renovation",
+          "type": "dropdown",
+          "required": true,
+          "options": ["None", "Full"]
+        },
+        {
+          "key": "dwellingInformation.roofRenovationYear",
+          "label": "Roof Renovation Year",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "dwellingInformation.roofRenovation",
+            "value": "Full"
+          }
+        },
+        {
+          "key": "dwellingInformation.plumbingRenovation",
+          "label": "Plumbing Renovation",
+          "type": "dropdown",
+          "required": true,
+          "options": ["None", "Partial", "Full"]
+        },
+        {
+          "key": "dwellingInformation.plumbingRenovationYear",
+          "label": "Plumbing Renovation Year",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "dwellingInformation.plumbingRenovation",
+            "notValue": "None"
+          }
+        },
+        {
+          "key": "dwellingInformation.fireSprinkler",
+          "label": "Fire Sprinkler",
+          "type": "dropdown",
+          "required": false,
+          "options": ["", "Partially Sprinklered", "Fully Sprinklered"]
+        }
+      ]
+    }
+  ]
+}

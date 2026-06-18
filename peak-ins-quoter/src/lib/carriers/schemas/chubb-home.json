@@ -1,0 +1,629 @@
+{
+  "id": "chubb-home",
+  "carrierId": "chubb",
+  "productType": "home",
+  "label": "Chubb Home",
+  "description": "Masterpiece EZ Quote — homeowners",
+  "version": "1.1.0",
+  "automation": {
+    "route": "chubb",
+    "submitPath": "/api/generate-quote/playwright/chubb",
+    "statusPath": "/api/generate-quote/playwright/chubb/:jobId"
+  },
+  "payload": {
+    "supportsFlatKeys": true,
+    "supportsNestedObjects": true,
+    "supportsFieldsArray": true,
+    "notes": "Backend resolves aliases under property.*, chubbHomeCoverageEstimator.*, homeownersInformations.*, locationDetail.*"
+  },
+  "formatRules": {
+    "date": "MM/DD/YYYY (accepts ISO YYYY-MM-DD input)",
+    "ssn": "9 digits, non-digits stripped",
+    "yesNo": ["Yes", "No"],
+    "checkbox": "yes/true/1/y → checked; no/false/0/n → unchecked",
+    "dropdown": "Matched by visible portal label text",
+    "roofAge": "Converted to 4-digit roof year in automation"
+  },
+  "nonPayload": [
+    {
+      "id": "producerCodes",
+      "source": "env",
+      "keys": ["CHUBB_PRODUCER_CODE", "CHUBB_SUB_PRODUCER_CODE"]
+    },
+    {
+      "id": "insuredEmailFallback",
+      "source": "env",
+      "key": "CHUBB_INSURED_EMAIL"
+    },
+    {
+      "id": "occupation",
+      "source": "hardcoded",
+      "notes": "Occupation and Occupation Detail set in automation"
+    },
+    {
+      "id": "residenceType",
+      "source": "hardcoded",
+      "value": "House"
+    },
+    {
+      "id": "buildingValue",
+      "source": "automation",
+      "notes": "Filled by Calculate in HCE modal, not sent in payload"
+    },
+    {
+      "id": "credentials",
+      "source": "env",
+      "keys": ["CHUBB_USERNAME", "CHUBB_PASSWORD"]
+    },
+    {
+      "id": "mfaOtp",
+      "source": "webhook"
+    }
+  ],
+  "sections": [
+    {
+      "id": "policy-information",
+      "title": "Policy Information",
+      "automationStep": "policy-information",
+      "fields": [
+        {
+          "key": "insuranceDetails.effectiveDate",
+          "aliases": ["personal.effectiveDate", "effectiveDate", "policy.effectiveDate"],
+          "label": "Effective Date",
+          "type": "date",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "client-info",
+      "title": "Client Information",
+      "automationStep": "client-info",
+      "fields": [
+        {
+          "key": "personal.firstName",
+          "aliases": ["personal.ownerFirstName", "firstName"],
+          "label": "First Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "personal.lastName",
+          "aliases": ["personal.ownerLastName", "lastName"],
+          "label": "Last Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "personal.applicantDOB",
+          "aliases": ["personal.dateOfBirth", "personal.ownerDOB", "dateOfBirth", "applicantDOB"],
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "key": "personal.email",
+          "aliases": ["personal.emailAddress", "shared.email", "email", "contactEmail", "customerEmail", "emailAddress"],
+          "label": "Email",
+          "type": "text",
+          "required": false,
+          "notes": "Also used for HCE agent email if empty; fallback CHUBB_INSURED_EMAIL"
+        },
+        {
+          "key": "personal.ssn",
+          "aliases": ["personal.applicantSSN", "personal.socialSecurity", "ssn", "socialSecurity"],
+          "label": "SSN",
+          "type": "text",
+          "required": false,
+          "format": "ssn"
+        }
+      ]
+    },
+    {
+      "id": "address",
+      "title": "Residence Address",
+      "automationStep": "address",
+      "fields": [
+        {
+          "key": "property.streetAddress",
+          "aliases": [
+            "property.address",
+            "personal.address",
+            "personal.streetAddress",
+            "streetAddress",
+            "address",
+            "personal.mailingAddress",
+            "mailingAddress"
+          ],
+          "label": "Street Address",
+          "type": "text",
+          "required": true,
+          "notes": "Must resolve via Chubb address autocomplete"
+        }
+      ]
+    },
+    {
+      "id": "residence-info-hce",
+      "title": "Home Coverage Estimator",
+      "automationStep": "residence-info-hce",
+      "fields": [
+        {
+          "key": "buildingType",
+          "aliases": ["property.buildingType", "chubbHomeCoverageEstimator.buildingType"],
+          "label": "Building Type",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Dwelling", "Condo Townhome", "Condo High Rise/Mid Rise"]
+        },
+        {
+          "key": "livingAreaSqFt",
+          "aliases": ["property.livingAreaSqFt", "chubbHomeCoverageEstimator.livingAreaSqFt"],
+          "label": "Living Area (sq ft)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "yearBuilt",
+          "aliases": ["property.yearBuilt", "chubbHomeCoverageEstimator.yearBuilt", "homeownersInformations.yearBuilt"],
+          "label": "Year Built",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Pre-1900", "1900 to 1919", "1920 to 1945", "Built Post 1946"]
+        },
+        {
+          "key": "classification",
+          "aliases": ["property.classification", "chubbHomeCoverageEstimator.classification"],
+          "label": "Classification",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Average", "Upgraded", "Upgraded Plus", "Custom", "Superior", "Distinctive"]
+        },
+        {
+          "key": "renovated",
+          "aliases": ["chubbHomeCoverageEstimator.renovated", "property.renovated"],
+          "label": "Renovated",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Yes", "No"],
+          "notes": "If omitted, automation picks first portal option"
+        },
+        {
+          "key": "percentRenovated",
+          "aliases": ["property.percentRenovated", "chubbHomeCoverageEstimator.percentRenovated"],
+          "label": "Percent Renovated",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "attachedStructures",
+          "label": "Attached Structures",
+          "type": "array",
+          "required": false,
+          "itemSchema": {
+            "attachedStructureType": {
+              "type": "dropdown",
+              "options": [
+                "Deck",
+                "Open Porch",
+                "Enclosed Porch",
+                "Unfinished Basement",
+                "Finished Basement Walk Out",
+                "One Car Garage",
+                "Two Car Garage",
+                "Three Car Garage",
+                "Covered Porch"
+              ]
+            },
+            "squareFeet": { "type": "number" }
+          }
+        },
+        {
+          "key": "constructionTypes",
+          "label": "Construction Types",
+          "type": "array",
+          "required": true,
+          "itemSchema": {
+            "constructionType": {
+              "type": "dropdown",
+              "options": ["Frame", "Concrete Block", "Veneer", "Masonry", "Stone"]
+            },
+            "percentage": { "type": "number", "notes": "% stripped in automation" }
+          }
+        },
+        {
+          "key": "residenceDeductible",
+          "aliases": ["property.residenceDeductible", "chubbHomeCoverageEstimator.residenceDeductible"],
+          "label": "Residence Deductible",
+          "type": "dropdown",
+          "required": false,
+          "options": [
+            "$1,000",
+            "$2,500",
+            "$5,000",
+            "$7,500",
+            "$10,000",
+            "$25,000",
+            "$50,000",
+            "$100,000",
+            "$250,000",
+            "$500,000",
+            "$750,000",
+            "$10,000,000"
+          ]
+        },
+        {
+          "key": "contentsAmount",
+          "aliases": ["chubbHomeCoverageEstimator.contentsAmount", "property.contentsAmount"],
+          "label": "Contents Amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "contentsPercentage",
+          "aliases": ["property.contentsPercentage", "chubbHomeCoverageEstimator.contentsPercentage"],
+          "label": "Contents Percentage",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "typeOfContents",
+          "aliases": ["property.typeOfContents", "chubbHomeCoverageEstimator.typeOfContents"],
+          "label": "Type of Contents",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Deluxe", "Standard", "Fire", "None"]
+        },
+        {
+          "key": "otherPermanentStructuresAmount",
+          "aliases": [
+            "property.otherPermanentStructuresAmount",
+            "chubbHomeCoverageEstimator.otherPermanentStructuresAmount"
+          ],
+          "label": "Other Permanent Structures Amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "otherPermanentStructuresPercentage",
+          "aliases": [
+            "property.otherPermanentStructuresPercentage",
+            "chubbHomeCoverageEstimator.otherPermanentStructuresPercentage"
+          ],
+          "label": "Other Permanent Structures Percentage",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "deductibleWaiverOption",
+          "aliases": ["property.deductibleWaiverOption", "chubbHomeCoverageEstimator.deductibleWaiverOption"],
+          "label": "Deductible Waiver Option",
+          "type": "dropdown",
+          "required": false,
+          "options": ["Waiver", "No Waiver"]
+        }
+      ]
+    },
+    {
+      "id": "residence-risk",
+      "title": "Residence Risk",
+      "automationStep": "residence-risk",
+      "fields": [
+        {
+          "key": "homeownersInformations.buildingConstructionType",
+          "aliases": ["buildingConstructionType"],
+          "label": "Building Construction Type",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal"
+        },
+        {
+          "key": "homeownersInformations.fireResistive",
+          "aliases": ["property.fireResistive", "fireResistive"],
+          "label": "Fire Resistive",
+          "type": "checkbox",
+          "required": true
+        },
+        {
+          "key": "locationDetail.locationOccupancy",
+          "aliases": ["locationOccupancy"],
+          "label": "Location Occupancy",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Principal", "Secondary", "Seasonal"]
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.usage",
+          "aliases": ["usage"],
+          "label": "Usage",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Owner Occupied", "Rented", "Vacant"]
+        },
+        {
+          "key": "homeownersInformations.sidingType",
+          "aliases": ["sidingType"],
+          "label": "Siding Type",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal"
+        },
+        {
+          "key": "homeownersInformations.primaryFoundationType",
+          "aliases": ["primaryFoundationType"],
+          "label": "Primary Foundation Type",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal"
+        },
+        {
+          "key": "homeownersInformations.basementFinished",
+          "aliases": ["basementFinished"],
+          "label": "Basement Type",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Unfinished", "Partially Finished", "Fully Finished"]
+        },
+        {
+          "key": "homeownersInformations.garageType",
+          "aliases": ["garageType"],
+          "label": "Garage Type",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal"
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.numberOfMortgages",
+          "aliases": ["numberOfMortgages"],
+          "label": "# of Mortgages",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "homeownersInformations.numberOfStories",
+          "aliases": ["numberOfStories"],
+          "label": "Number of Stories",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "homeownersInformations.numberOfBathrooms",
+          "aliases": ["numberOfBathrooms"],
+          "label": "Number of Bathrooms",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "property.fireplaceCount",
+          "aliases": ["fireplaceCount", "homeownersInformations.fireplaceCount"],
+          "label": "# Fireplaces",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal"
+        },
+        {
+          "key": "homeownersInformations.underConstructionRenovation",
+          "aliases": ["property.homeUnderConstruction", "homeUnderConstruction", "underConstructionRenovation"],
+          "label": "Under Construction / Renovation",
+          "type": "dropdown",
+          "required": true,
+          "options": ["Yes", "No"]
+        },
+        {
+          "key": "homeownersInformations.squareFootage",
+          "aliases": ["squareFootage", "livingAreaSqFt"],
+          "label": "Square Footage",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "homeownersInformations.swimmingPool",
+          "aliases": ["property.swimmingPool", "swimmingPool"],
+          "label": "Swimming Pool",
+          "type": "checkbox",
+          "required": true
+        },
+        {
+          "key": "homeownersInformations.multiFamily",
+          "aliases": ["property.multiFamily", "multiFamily"],
+          "label": "Multi-Family",
+          "type": "checkbox",
+          "required": true
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.priorCarrier",
+          "aliases": ["priorCarrier"],
+          "label": "Prior Carrier",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal"
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.priorCarrierOther",
+          "aliases": ["priorCarrierOther"],
+          "label": "Other Prior Carrier",
+          "type": "text",
+          "required": true,
+          "conditionalOn": { "key": "chubbHomeCoverageEstimator.priorCarrier", "value": "Other" }
+        }
+      ]
+    },
+    {
+      "id": "state-detail",
+      "title": "State Detail",
+      "automationStep": "state-detail",
+      "fields": [
+        {
+          "key": "homeownersInformations.roofShape",
+          "aliases": ["roofShape"],
+          "label": "Roof Shape",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal"
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.roofCoveringType",
+          "aliases": ["roofCoveringType"],
+          "label": "Roof Covering Type",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Architectural Shingle",
+            "Asphalt Shingle or Fiberglass Shingle",
+            "Tile",
+            "Composition over Wood",
+            "Metal",
+            "Modified Polymer",
+            "Slate",
+            "Wood",
+            "Other",
+            "Asbestos Shingles",
+            "Rolled Asphalt"
+          ]
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.windProtection",
+          "aliases": ["windProtection"],
+          "label": "Wind Protection",
+          "type": "dropdown",
+          "required": true,
+          "options": ["None", "Basic", "Hurricane"]
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.hurricaneOrWindHailDeductibleType",
+          "aliases": ["hurricaneOrWindHailDeductibleType"],
+          "label": "Hurricane / Wind-Hail Deductible Type",
+          "type": "dropdown",
+          "required": true,
+          "options": ["No Wind or Hail", "All Wind or Hail"]
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.hurricaneOrWindHailDeductiblePercentage",
+          "aliases": ["hurricaneOrWindHailDeductiblePercentage"],
+          "label": "Hurricane or Wind/Hail Deductible Percentage",
+          "type": "dropdown",
+          "required": true,
+          "options": ["0.2%", "0.5%", "1%", "2%", "3%", "5%", "10%"],
+          "conditionalOn": {
+            "key": "chubbHomeCoverageEstimator.hurricaneOrWindHailDeductibleType",
+            "value": "All Wind or Hail"
+          }
+        },
+        {
+          "key": "property.roofAge",
+          "aliases": ["roofAge"],
+          "label": "Age of Roof",
+          "type": "number",
+          "required": true,
+          "format": "roofAge"
+        }
+      ]
+    },
+    {
+      "id": "discount-detail",
+      "title": "Discounts & Protective Devices",
+      "automationStep": "discount-detail",
+      "fields": [
+        {
+          "key": "chubbHomeCoverageEstimator.distanceFromFireStation",
+          "aliases": ["distanceFromFireStation"],
+          "label": "Distance from Fire Station",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "less than 1 mile",
+            "1 mile < 3 miles",
+            "3 miles < 5 miles",
+            "5 miles < 7 miles",
+            "7 miles < 10 miles",
+            "10 or more miles"
+          ]
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.waterLeakProtection",
+          "aliases": ["waterLeakProtection"],
+          "label": "Water Leak Protection",
+          "type": "dropdown",
+          "required": true,
+          "options": ["None", "Alarm", "Automatic Shut-Off", "Automatic Shut-Off and Alarm"]
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.alarmBurglar",
+          "aliases": ["alarmBurglar"],
+          "label": "Burglar Alarm",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.alarmFire",
+          "aliases": ["alarmFire"],
+          "label": "Fire Alarm",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.securityGatedCommunity",
+          "aliases": ["securityGatedCommunity"],
+          "label": "Gated Community",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.security24HourGuardMonitoring",
+          "aliases": ["security24HourGuardMonitoring"],
+          "label": "24-Hour Guard Monitoring",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.securityGatedHouse",
+          "aliases": ["securityGatedHouse"],
+          "label": "Gated House",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.securityFullTimeCaretaker",
+          "aliases": ["securityFullTimeCaretaker"],
+          "label": "Full-Time Caretaker",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.detectorGasLeakage",
+          "aliases": ["detectorGasLeakage"],
+          "label": "Gas Leak Detector",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.detectorLightningProtection",
+          "aliases": ["detectorLightningProtection"],
+          "label": "Lightning Protection",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.detectorBackupGenerator",
+          "aliases": ["detectorBackupGenerator"],
+          "label": "Backup Generator",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.detectorSeismicShutOffValve",
+          "aliases": ["detectorSeismicShutOffValve"],
+          "label": "Seismic Shut-Off Valve",
+          "type": "checkbox",
+          "required": false
+        },
+        {
+          "key": "chubbHomeCoverageEstimator.sprinklerResidentialSystem",
+          "aliases": ["sprinklerResidentialSystem"],
+          "label": "Residential Sprinkler System",
+          "type": "checkbox",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

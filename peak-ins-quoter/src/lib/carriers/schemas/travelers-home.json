@@ -1,0 +1,919 @@
+{
+  "id": "travelers-home",
+  "carrierId": "travelers",
+  "productType": "home",
+  "label": "Travelers Home",
+  "description": "Travelers homeowners quoting portal",
+  "version": "1.0.0",
+  "automation": {
+    "route": "travelers",
+    "submitPath": "/api/generate-quote/playwright/travelers",
+    "statusPath": "/api/generate-quote/playwright/travelers/:jobId"
+  },
+  "payload": {
+    "supportsFlatKeys": true,
+    "supportsNestedObjects": true,
+    "supportsFieldsArray": true,
+    "notes": "Keys also resolve as homeownersInformations.* and occupancy.* aliases in backend runner."
+  },
+  "formatRules": {
+    "date": "MM/DD/YYYY (accepts ISO YYYY-MM-DD input)",
+    "yesNo": [
+      "Yes",
+      "No"
+    ],
+    "checkbox": "yes/true/1/y → Yes; no/false/0/n → No",
+    "dropdown": "Matched by visible portal label text"
+  },
+  "nonPayload": [
+    {
+      "id": "credentials",
+      "source": "env",
+      "keys": [
+        "TRAVELERS_USERNAME",
+        "TRAVELERS_PASSWORD"
+      ]
+    },
+    {
+      "id": "mfaOtp",
+      "source": "webhook"
+    },
+    {
+      "id": "replacementCostMethod",
+      "source": "hardcoded",
+      "notes": "Quote W/Out Estimate — not from payload"
+    }
+  ],
+  "sections": [
+    {
+      "id": "customer-search",
+      "title": "Customer Search",
+      "automationStep": "customer-search",
+      "fields": [
+        {
+          "key": "personal.lastName",
+          "label": "Last Name",
+          "type": "text",
+          "required": true,
+          "aliases": [
+            "lastName",
+            "personal.ownerLastName"
+          ]
+        },
+        {
+          "key": "personal.firstName",
+          "label": "First Name",
+          "type": "text",
+          "required": false,
+          "aliases": [
+            "firstName",
+            "personal.ownerFirstName"
+          ]
+        },
+        {
+          "key": "personal.state",
+          "label": "State",
+          "type": "dropdown",
+          "required": true,
+          "aliases": [
+            "state",
+            "stateCode"
+          ]
+        },
+        {
+          "key": "personal.city",
+          "label": "City",
+          "type": "text",
+          "required": true,
+          "aliases": [
+            "city"
+          ]
+        },
+        {
+          "key": "personal.zipCode",
+          "label": "ZIP",
+          "type": "text",
+          "required": true,
+          "aliases": [
+            "zip",
+            "zipCode"
+          ]
+        },
+        {
+          "key": "accountSearchCriteria",
+          "label": "Search Criteria (legacy)",
+          "type": "dropdown",
+          "required": false,
+          "options": [
+            "01 Name",
+            "02 Policy",
+            "04 CCF",
+            "05 ABS"
+          ],
+          "notes": "Default 01 Name"
+        },
+        {
+          "key": "policyNumber",
+          "label": "Policy #",
+          "type": "text",
+          "required": false,
+          "aliases": [
+            "insuranceDetails.policyNumber"
+          ],
+          "conditionalOn": {
+            "key": "accountSearchCriteria",
+            "value": "02 Policy"
+          }
+        },
+        {
+          "key": "ccfNumber",
+          "label": "CCF #",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "accountSearchCriteria",
+            "value": "04 CCF"
+          }
+        },
+        {
+          "key": "absNumber",
+          "label": "ABS #",
+          "type": "text",
+          "required": false,
+          "conditionalOn": {
+            "key": "accountSearchCriteria",
+            "value": "05 ABS"
+          }
+        },
+        {
+          "key": "personal.address",
+          "label": "Street (Add Customer)",
+          "type": "text",
+          "required": true,
+          "aliases": [
+            "streetAddress",
+            "street",
+            "address",
+            "personal.streetAddress"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "initiate-quote",
+      "title": "Initiate Quote",
+      "automationStep": "initiate-quote",
+      "fields": [
+        {
+          "key": "insuranceDetails.effectiveDate",
+          "label": "Effective Date",
+          "type": "date",
+          "required": true,
+          "aliases": [
+            "personal.effectiveDate",
+            "effectiveDate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "account-details",
+      "title": "Account Details",
+      "automationStep": "account-details",
+      "fields": [
+        {
+          "key": "personal.phone",
+          "label": "Home Phone",
+          "type": "text",
+          "required": true,
+          "aliases": [
+            "phone",
+            "personal.homePhone"
+          ]
+        },
+        {
+          "key": "personal.applicantDOB",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true,
+          "aliases": [
+            "personal.dateOfBirth",
+            "dateOfBirth"
+          ]
+        },
+        {
+          "key": "personal.address",
+          "label": "Address",
+          "type": "text",
+          "required": true,
+          "aliases": [
+            "streetAddress",
+            "address"
+          ]
+        },
+        {
+          "key": "personal.city",
+          "label": "City",
+          "type": "text",
+          "required": true,
+          "aliases": [
+            "city"
+          ]
+        },
+        {
+          "key": "personal.state",
+          "label": "State",
+          "type": "dropdown",
+          "required": true,
+          "aliases": [
+            "state"
+          ]
+        },
+        {
+          "key": "personal.zipCode",
+          "label": "ZIP Code",
+          "type": "text",
+          "required": true,
+          "aliases": [
+            "zipCode",
+            "zip"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "report-information",
+      "title": "Report Information",
+      "automationStep": "report-information",
+      "fields": [
+        {
+          "key": "personal.livedAtDifferentAddressPast6Months",
+          "label": "Have you lived at a different address in the past 6 months?",
+          "type": "dropdown",
+          "required": true,
+          "aliases": [
+            "livedAtDifferentAddressPast6Months"
+          ],
+          "options": [
+            "Yes",
+            "No"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "home-underwriting",
+      "title": "Home Underwriting",
+      "automationStep": "home-underwriting",
+      "fields": [
+        {
+          "key": "homeownersInsuranceCancelledDeclinedNonrenewedLast3Years",
+          "label": "Has your homeowners insurance been cancelled/declined/nonrenewed in the last 3 years?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "homeVacantOrUnoccupied",
+          "label": "Is the home vacant or unoccupied?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "occupiedInNext30Days",
+          "label": "Will it be occupied in the next 30 days?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "conditionalOn": {
+            "key": "homeVacantOrUnoccupied",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "businessConductedOnPremises",
+          "label": "Do you conduct any type of business on the premises?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "businessProvidesProfessionalAdviceOrOpinions",
+          "label": "Does the Business provide professional advice and/or opinions?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "conditionalOn": {
+            "key": "businessConductedOnPremises",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "businessHasEmployeesOtherThanResidenceRelatives",
+          "label": "Are there any employees other than residence relatives?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "conditionalOn": {
+            "key": "businessConductedOnPremises",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "businessMoreThanFourClientVisitsPerWeek",
+          "label": "More than four client visits per week?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "conditionalOn": {
+            "key": "businessConductedOnPremises",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "homeAvailableForRentIncludingShortTermOrHomeSharing",
+          "label": "Home available for rent / short-term / home sharing?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "portionOfHomeAvailableForRent",
+          "label": "What portion of your home is available for rent?",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal",
+          "conditionalOn": {
+            "key": "homeAvailableForRentIncludingShortTermOrHomeSharing",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "basisHomeAvailableForRent",
+          "label": "On what basis is your home available for rent?",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal",
+          "conditionalOn": {
+            "key": "homeAvailableForRentIncludingShortTermOrHomeSharing",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "homeInDesignatedHighRiskFloodZone",
+          "label": "Is the home in a designated high risk flood zone?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "hasFloodPolicy",
+          "label": "Do you have a flood policy?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "conditionalOn": {
+            "key": "homeInDesignatedHighRiskFloodZone",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "petsOrAnimalsBittenOrInjuredAnyone",
+          "label": "Pets/animals that have bitten or injured anyone?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "ownsRestrictedDogBreedsOrMix",
+          "label": "Own restricted dog breeds or mix?",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "insuranceStatus",
+          "label": "Insurance Status",
+          "type": "dropdown",
+          "required": true,
+          "aliases": [
+            "insuranceDetails.insuranceStatus"
+          ],
+          "options": [
+            "Currently Insured",
+            "No Current Insurance"
+          ]
+        },
+        {
+          "key": "burglarAlarm",
+          "label": "Burglar Alarm",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Local",
+            "Smart",
+            "Central",
+            "None"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "residence-location",
+      "title": "Residence — Additional Location",
+      "automationStep": "residence",
+      "fields": [
+        {
+          "key": "feetFromHydrant",
+          "label": "Feet from Hydrant",
+          "type": "number",
+          "required": true,
+          "aliases": [
+            "property.feetFromHydrant",
+            "residence.feetFromHydrant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "home-characteristics",
+      "title": "Home Characteristics",
+      "automationStep": "home-characteristics",
+      "fields": [
+        {
+          "key": "yearBuilt",
+          "label": "Year Built",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "residenceType",
+          "label": "Residence Type",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Primary",
+            "Secondary"
+          ]
+        },
+        {
+          "key": "seasonalDwelling",
+          "label": "Seasonal Dwelling",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "swimmingPool",
+          "label": "Swimming Pool",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "swimmingPoolType",
+          "label": "Swimming Pool Type",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Above Ground",
+            "Inground"
+          ],
+          "conditionalOn": {
+            "key": "swimmingPool",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "swimmingPoolSafetyFeature",
+          "label": "Swimming Pool Safety Feature",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "None",
+            "Fence or Locked Gate",
+            "Retractable Ladder",
+            "Other"
+          ],
+          "conditionalOn": {
+            "key": "swimmingPool",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "purchaseMonthYear",
+          "label": "Purchase Month/Year",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "woodCoalPelletStove",
+          "label": "Wood/Coal/Pellet Stove",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ]
+        },
+        {
+          "key": "stoveProfessionallyInstalledOrInspected",
+          "label": "Stove Professionally Installed/Inspected",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "conditionalOn": {
+            "key": "woodCoalPelletStove",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "chimneyCleanedAnnually",
+          "label": "Chimney Cleaned Annually",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "conditionalOn": {
+            "key": "woodCoalPelletStove",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "ulListed",
+          "label": "UL Listed",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "conditionalOn": {
+            "key": "woodCoalPelletStove",
+            "value": "Yes"
+          }
+        },
+        {
+          "key": "numberOfFamilies",
+          "label": "Number of Families",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "1 Family",
+            "2 Family",
+            "3 Family",
+            "4 Family",
+            "5+ Family"
+          ]
+        },
+        {
+          "key": "primarySourceOfHeat",
+          "label": "Primary Source of Heat",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Central - Gas",
+            "Central - Electric",
+            "Central - Oil",
+            "None",
+            "Other"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "structure",
+      "title": "Structure",
+      "automationStep": "structure",
+      "fields": [
+        {
+          "key": "squareFootage",
+          "label": "Square Footage",
+          "type": "number",
+          "required": true,
+          "aliases": [
+            "property.squareFootage"
+          ]
+        },
+        {
+          "key": "buildingConstructionType",
+          "label": "Building Construction Type",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Frame",
+            "Masonry",
+            "Concrete",
+            "Steel",
+            "Modular",
+            "Log Home",
+            "Mobile or Manufactured"
+          ],
+          "optionsSource": "portal"
+        },
+        {
+          "key": "sidingType",
+          "label": "Siding Type",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Vinyl",
+            "Aluminum/Steel",
+            "Wood",
+            "Brick/Masonry Veneer",
+            "Stone Veneer",
+            "Stucco",
+            "Cement Fiber",
+            "All Other"
+          ],
+          "optionsSource": "portal"
+        },
+        {
+          "key": "primaryFoundationType",
+          "label": "Primary Foundation Type",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Basement",
+            "Crawl Space",
+            "Slab",
+            "Open/Raised"
+          ],
+          "optionsSource": "portal"
+        },
+        {
+          "key": "basementFinished",
+          "label": "Basement Finished %",
+          "type": "text",
+          "required": true,
+          "notes": "Yes→100%, No→0%, or numeric %",
+          "conditionalOn": {
+            "key": "primaryFoundationType",
+            "value": "Basement"
+          }
+        },
+        {
+          "key": "numberOfBathrooms",
+          "label": "Number of Bathrooms",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "garageType",
+          "label": "Garage Type",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "None",
+            "Attached",
+            "Detached",
+            "Carport",
+            "Basement"
+          ],
+          "optionsSource": "portal"
+        },
+        {
+          "key": "garageSizeNumberOfCars",
+          "label": "Garage Size (Number of Cars)",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5+"
+          ],
+          "conditionalOn": {
+            "key": "garageType",
+            "notValue": "None"
+          }
+        },
+        {
+          "key": "numberOfStories",
+          "label": "Number of Stories",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "1",
+            "1.5",
+            "2",
+            "2.5",
+            "3",
+            "4+"
+          ],
+          "optionsSource": "portal"
+        }
+      ]
+    },
+    {
+      "id": "roof",
+      "title": "Roof",
+      "automationStep": "roof",
+      "fields": [
+        {
+          "key": "roofShape",
+          "label": "Roof Shape",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Gable",
+            "Hip",
+            "Gambrel",
+            "Flat",
+            "Shed",
+            "Complex",
+            "Other"
+          ],
+          "optionsSource": "portal"
+        },
+        {
+          "key": "roofType",
+          "label": "Roof Type",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Architectural Shingle",
+            "Asphalt-Fiberglass",
+            "Clay or Concrete Tile",
+            "Slate",
+            "Metal",
+            "Comp Over Wood",
+            "Wood",
+            "Modified Polymer",
+            "Foam Composite",
+            "Rolled Material",
+            "Rubber/Membrane",
+            "Tar & Gravel",
+            "T-Lock",
+            "Asbestos",
+            "Other"
+          ],
+          "optionsSource": "portal"
+        },
+        {
+          "key": "yearRoofingReplaced",
+          "label": "Year Roofing Replaced",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "numberOfSolarPanelsOnRoof",
+          "label": "Number of Solar Panels on Roof",
+          "type": "number",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "losses",
+      "title": "Losses",
+      "automationStep": "losses",
+      "fields": [
+        {
+          "key": "currentAutoPolicyBodilyInjuryLimit",
+          "label": "Current Auto Policy Bodily Injury Limit",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Less than or Equal to 25/50 (CSL 75) (A)",
+            "Greater than 25/50 (CSL 75) (B)",
+            "No Car (N)",
+            "Car in Storage (G)",
+            "Military (M)",
+            "Car Without Insurance (NP)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "home-coverage",
+      "title": "Home Coverage",
+      "automationStep": "coverage",
+      "fields": [
+        {
+          "key": "baseCoverageLevel",
+          "label": "Base Coverage Level",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Travelers Protect®",
+            "Travelers Protect Plus®",
+            "Travelers Protect Premier®"
+          ]
+        },
+        {
+          "key": "replacementCost",
+          "label": "Replacement Cost",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "aDwellingLimit",
+          "label": "A - Dwelling Limit",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "ePersonalLiability",
+          "label": "E - Personal Liability",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal"
+        },
+        {
+          "key": "fMedicalPayments",
+          "label": "F - Medical Payments",
+          "type": "dropdown",
+          "required": true,
+          "optionsSource": "portal"
+        },
+        {
+          "key": "deductible",
+          "label": "Deductible",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "1,000",
+            "1,500",
+            "2,000",
+            "2,500",
+            "5,000",
+            "7,500",
+            "10,000",
+            "25,000",
+            "50,000",
+            "1%",
+            "2%"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "digital-quote",
+      "title": "Digital Quote",
+      "automationStep": "digital-quote",
+      "fields": [
+        {
+          "key": "personal.email",
+          "label": "Customer Email Address",
+          "type": "text",
+          "required": true,
+          "aliases": [
+            "email",
+            "shared.email",
+            "digitalQuoteEmail"
+          ]
+        }
+      ]
+    }
+  ]
+}

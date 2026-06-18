@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Playwright Flow (Auto-Owners) — peak-backend</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --fg: #111827;
+        --muted: #6b7280;
+        --border: #e5e7eb;
+        --code-bg: #0b1020;
+        --code-fg: #e5e7eb;
+        --accent: #2563eb;
+        --warn: #b45309;
+        --bad: #b91c1c;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji",
+          "Segoe UI Emoji";
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.45;
+      }
+      header {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 12px;
+        margin-bottom: 18px;
+      }
+      h1 {
+        margin: 0 0 6px 0;
+        font-size: 20px;
+      }
+      p {
+        margin: 8px 0;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .box {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 14px;
+        margin: 12px 0;
+      }
+      .box h2 {
+        margin: 0 0 8px 0;
+        font-size: 16px;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+          monospace;
+      }
+      pre {
+        background: var(--code-bg);
+        color: var(--code-fg);
+        padding: 12px;
+        border-radius: 10px;
+        overflow: auto;
+        font-size: 12px;
+        margin: 10px 0;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      ul {
+        margin: 8px 0 8px 18px;
+      }
+      .tag {
+        display: inline-block;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+      }
+      .warn {
+        color: var(--warn);
+      }
+      .bad {
+        color: var(--bad);
+      }
+      .grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 1fr;
+      }
+      @media (min-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      .k {
+        font-weight: 600;
+      }
+      .file {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+          monospace;
+        font-size: 12px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Playwright Flow (Auto-Owners) — peak-backend</h1>
+      <p class="muted">
+        This document explains how the current Playwright automation works, which functions run in which order, and how
+        errors are captured and returned back to the frontend.
+      </p>
+      <span class="tag">Current implemented steps: Username → Password → Sign In</span>
+    </header>
+
+    <div class="box">
+      <h2>1) API entrypoint (start the Playwright job)</h2>
+      <p>
+        Frontend calls this endpoint to start the automation. The backend returns a <span class="k">jobId</span>
+        immediately (HTTP 202), then runs Playwright in background.
+      </p>
+      <pre>POST /api/generate-quote/playwright
+
+Response (202):
+{
+  "success": true,
+  "message": "Playwright automation job accepted.",
+  "data": {
+    "jobId": "...",
+    "status": "queued",
+    "startedAt": "ISO_DATE",
+    "step": "secure_sign_in_username"
+  }
+}</pre>
+      <p class="file">Code: <code>src/controllers/playwright-generate-quote.controller.ts</code></p>
+    </div>
+
+    <div class="box">
+      <h2>2) Job status endpoint (frontend polls this)</h2>
+      <p>
+        Frontend can poll job state using the jobId returned from the start call. This is where you will see the final
+        error message and the screenshot path when failures occur.
+      </p>
+      <pre>GET /api/generate-quote/playwright/:jobId
+
+Response (200):
+{
+  "success": true,
+  "message": "OK",
+  "data": {
+    "jobId": "...",
+    "status": "running|completed|failed",
+    "step": "secure_sign_in_username|secure_sign_in_password|...",
+    "error": "string (only when failed)",
+    "screenshotPath": "playwright-artifacts/....png (only when captured)",
+    "startedAt": "ISO_DATE",
+    "finishedAt": "ISO_DATE"
+  }
+}</pre>
+      <p class="file">Code: <code>src/controllers/playwright-generate-quote.controller.ts</code></p>
+    </div>
+
+    <div class="box">
+      <h2>3) High-level call flow (who calls what)</h2>
+      <div class="grid">
+        <div class="box">
+          <h2>Backend call chain</h2>
+          <ul>
+            <li><span class="k">Route</span> → <code>POST /api/generate-quote/playwright</code></li>
+            <li>
+              <span class="k">Controller</span> → <code>generateQuotePlaywrightController()</code> validates env creds
+              and starts job
+            </li>
+            <li>
+              <span class="k">Service</span> → <code>playwrightAutomationService.startJob()</code> creates job in store
+              and runs background task
+            </li>
+            <li>
+              <span class="k">Runner</span> → <code>runAutoOwnersPlaywright(input, { jobId })</code> launches Chromium,
+              executes steps, detects errors, captures screenshot, throws clean error on failure
+            </li>
+          </ul>
+        </div>
+        <div class="box">
+          <h2>Files involved</h2>
+          <ul>
+            <li class="file">src/routes/quote.routes.ts</li>
+            <li class="file">src/controllers/playwright-generate-quote.controller.ts</li>
+            <li class="file">src/playwright-automation/playwright.service.ts</li>
+            <li class="file">src/playwright-automation/playwright.job-store.ts</li>
+            <li class="file">src/playwright-automation/playwright.runner.ts</li>
+            <li class="file">src/playwright-automation/autoowners.steps.ts</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="box">
+      <h2>4) Step-by-step (current implemented steps)</h2>
+      <p class="muted">These are the steps that currently run when the job starts.</p>
+
+      <h3 style="margin: 10px 0 6px 0; font-size: 14px">Step 1 — Username screen</h3>
+      <ul>
+        <li>Navigate to <code>https://www.aoins.com/my.policy</code></li>
+        <li>Fill username input</li>
+        <li>Click <code>Continue</code></li>
+      </ul>
+      <pre>Function: stepSecureSignInUsername(page, username)
+Selectors:
+- Username: form#auth_form input[name="username"]#input_1
+- Continue: form#auth_form input[type="submit"][value="Continue"]</pre>
+      <p class="file">Code: <code>src/playwright-automation/autoowners.steps.ts</code></p>
+
+      <h3 style="margin: 14px 0 6px 0; font-size: 14px">Step 1.5 — Detect AO 500 error after Continue</h3>
+      <p>
+        Sometimes AO returns a maintenance/500 page immediately after clicking Continue. We detect it and fail fast with
+        a screenshot and support ticket id (if available).
+      </p>
+      <pre>Detection:
+- URL contains /errorMaintenance/html/500.html
+OR
+- Text "Oops, something is broken." visible
+Extracts:
+- "Support Ticket ID: ..." (if present)
+Artifacts:
+- playwright-artifacts/&lt;jobId&gt;-ao-500-&lt;timestamp&gt;.png</pre>
+      <p class="file">Code: <code>src/playwright-automation/playwright.runner.ts</code></p>
+
+      <h3 style="margin: 14px 0 6px 0; font-size: 14px">Step 2 — Password screen</h3>
+      <ul>
+        <li>Fill password input (<code>#password</code>)</li>
+        <li>Click <code>Sign In</code> (<code>#submit-button</code>)</li>
+      </ul>
+      <pre>Function: stepSecureSignInPassword(page, password)
+Selectors:
+- Password: form#form input#password[name="password"][type="password"]
+- Sign In:  form#form button#submit-button[type="submit"]</pre>
+      <p class="file">Code: <code>src/playwright-automation/autoowners.steps.ts</code></p>
+
+      <h3 style="margin: 14px 0 6px 0; font-size: 14px">Step 2.5 — Detect AO 500 error after Sign In</h3>
+      <p class="muted">Same detection as step 1.5, but after clicking Sign In.</p>
+
+      <h3 style="margin: 14px 0 6px 0; font-size: 14px">Step 3 (next to implement) — 2FA screen</h3>
+      <p class="muted">
+        This is not implemented yet. You will provide the HTML + screenshot of the 2FA page, and we will add the next
+        function and selectors.
+      </p>
+    </div>
+
+    <div class="box">
+      <h2>5) Error handling (what you will see when something fails)</h2>
+      <ul>
+        <li>
+          <span class="k">Access Denied</span>:
+          detected via URL <code>/vdesk/hangup.php3</code> OR text <code>Access Denied.</code> (screenshot captured)
+        </li>
+        <li>
+          <span class="k">AO 500</span> (“Oops, something is broken”):
+          detected via URL/text (screenshot captured + ticket id extracted)
+        </li>
+        <li>
+          <span class="k">Any other error</span>:
+          screenshot captured and error returned
+        </li>
+      </ul>
+      <p>
+        In headed mode (when <code>options.headless=false</code>), the browser will stay open for a short time on error
+        to let you see the failure.
+      </p>
+      <pre>Option:
+options.keepBrowserOpenOnErrorMs
+Default: 15000 (15 seconds)</pre>
+      <p class="file">Code: <code>src/playwright-automation/playwright.runner.ts</code></p>
+    </div>
+
+    <div class="box">
+      <h2>6) How to run (from frontend)</h2>
+      <p>
+        Start job, store <code>data.jobId</code>, then poll <code>/api/generate-quote/playwright/:jobId</code> until
+        <code>status</code> becomes <code>completed</code> or <code>failed</code>.
+      </p>
+      <pre>// Start
+POST /api/generate-quote/playwright
+
+// Poll
+GET /api/generate-quote/playwright/&lt;jobId&gt;</pre>
+      <p class="muted">
+        When failed, use <code>data.error</code> and <code>data.screenshotPath</code> to view what happened.
+      </p>
+    </div>
+
+    <div class="box">
+      <h2>7) Notes / production considerations</h2>
+      <ul>
+        <li>
+          Job store is currently <span class="k">in-memory</span> (process memory). If the server restarts, job state is
+          lost. For production scale, move to Redis/DB.
+        </li>
+        <li>
+          Browser runs inside the backend process. For concurrency and reliability, move the runner to a worker/queue.
+        </li>
+        <li>
+          Current steps cover login username + password only. Next screens (2FA, navigation, forms) will be added step by
+          step using your HTML selectors.
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>
+

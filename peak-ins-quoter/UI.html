@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Peak Quote - Complete UI/Data Flow Guide</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #121a33;
+      --text: #e8ecf8;
+      --muted: #b7c0dc;
+      --line: #2a3766;
+      --accent: #8bb3ff;
+      --ok: #6ee7b7;
+      --warn: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .hero, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    h1, h2, h3 { margin: 0 0 10px 0; }
+    h1 { font-size: 28px; }
+    h2 {
+      font-size: 20px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 8px;
+      margin-top: 4px;
+    }
+    h3 { font-size: 16px; margin-top: 14px; }
+    p { color: var(--muted); margin: 8px 0; }
+    ul, ol { margin: 8px 0 8px 20px; color: var(--muted); }
+    code {
+      background: #1a2344;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 1px 6px;
+      color: #dbe7ff;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+    }
+    .flow {
+      background: #0f1730;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      color: #d7e2ff;
+      white-space: pre-wrap;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+    }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 12px;
+    }
+    .small { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Peak Quote - Complete UI & Data Flow Guide</h1>
+      <p>
+        Yeh document new developer onboarding ke liye hai. Ismein upload se le kar extraction,
+        review/edit/save, quote preview, APIs, aur <code>home / auto / both</code> ka complete flow
+        clearly explain kiya gaya hai.
+      </p>
+      <p class="small">
+        Scope: Current implementation based on project APIs/components.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>1) High-Level End-to-End Flow</h2>
+      <div class="flow">User selects PDF + insurance type (home/auto/both)
+-> POST /api/upload (file storage + extraction row create)
+-> POST /api/extract (download PDF, convert pages, AI extraction, save extracted_data)
+-> Redirect /review/[id]
+-> Render extraction form(s) (home/auto/both)
+-> User edits fields
+-> Auto-save PATCH /api/extractions/[id]
+-> Proceed to quote page /review/[id]/quote?type=...
+-> Quote validation + final preview
+-> Submit quote POST /api/quotes/submit</div>
+    </section>
+
+    <section class="card">
+      <h2>2) Step-by-Step: PDF Upload se kya hota hai</h2>
+      <h3>2.1 Frontend Upload UI</h3>
+      <ul>
+        <li>User file select/drop karta hai in <code>PdfUploadZone</code>.</li>
+        <li>User insurance type choose karta hai: <code>home</code>, <code>auto</code>, <code>both</code>.</li>
+        <li><code>useUpload</code> hook progress/status handle karta hai.</li>
+      </ul>
+
+      <h3>2.2 Upload API</h3>
+      <ul>
+        <li><code>POST /api/upload</code></li>
+        <li>Auth check via Supabase session.</li>
+        <li>PDF type + max 20MB validation.</li>
+        <li>File Supabase Storage bucket <code>fact-finders</code> mein save hoti hai.</li>
+        <li>DB table <code>extractions</code> mein row banti hai with <code>status = pending</code>.</li>
+      </ul>
+
+      <h3>2.3 Extraction API</h3>
+      <ul>
+        <li><code>POST /api/extract</code> with <code>extractionId</code> + <code>insuranceType</code>.</li>
+        <li>Extraction row <code>processing</code> mein set hoti hai.</li>
+        <li>Storage se PDF download hoti hai.</li>
+        <li>PDF pages images mein convert hoti hain (<code>convertPDFToImages</code>).</li>
+        <li>AI extraction run hota hai (details below).</li>
+        <li>Result <code>extractions.extracted_data</code> mein save hota hai, status <code>completed</code>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>3) Fields kahan se aati hain? (Source of Truth)</h2>
+      <div class="grid">
+        <div>
+          <h3>A) UI Field Definitions</h3>
+          <ul>
+            <li>Home fields: <code>src/types/home-extraction.ts</code></li>
+            <li>Auto fields: <code>src/types/auto-extraction.ts</code></li>
+            <li>Yahan labels, input types, required flags, options define hote hain.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>B) AI Extraction Contract</h3>
+          <ul>
+            <li>Prompt: <code>src/lib/openrouter/prompts.ts</code></li>
+            <li>Schema validation: <code>src/lib/openrouter/schemas.ts</code></li>
+            <li>Yahan decide hota hai AI se kaunsi JSON structure expect karni hai.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>C) API Data Types</h3>
+          <ul>
+            <li><code>src/types/extraction.ts</code> (HomeApi/AutoApi/Combined).</li>
+            <li>Yeh backend storage/extraction shape define karta hai.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>D) API -> UI Mapping</h3>
+          <ul>
+            <li><code>src/lib/extraction/transform.ts</code></li>
+            <li>DB/API format ko review/quote UI format mein convert karta hai.</li>
+          </ul>
+        </div>
+      </div>
+      <p class="warn">
+        Agar field UI mein add ho gayi lekin prompt/schema/transform mein add na ho, to auto-fill incomplete rahega.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>4) Home vs Auto vs Both ka exact behavior</h2>
+
+      <h3>4.1 Home</h3>
+      <ul>
+        <li>Extraction API <code>extractHomeFromImages</code> call karta hai.</li>
+        <li>Saved data shape: Home API structure.</li>
+        <li>Review page par Home form load hota hai.</li>
+      </ul>
+
+      <h3>4.2 Auto</h3>
+      <ul>
+        <li>Extraction API <code>extractAutoFromImages</code> call karta hai.</li>
+        <li>Saved data shape: Auto API structure.</li>
+        <li>Review page par Auto form load hota hai.</li>
+      </ul>
+
+      <h3>4.3 Both</h3>
+      <ul>
+        <li>Home + Auto extraction parallel run hota hai.</li>
+        <li>Combined payload save hota hai with:
+          <code>shared</code>, <code>autoPersonal</code>, <code>home</code>, <code>auto</code>, <code>quoteType=both</code>.
+        </li>
+        <li>Review page tabs/sections ke through dono data edit hota hai.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>5) Review Page: Data kaise show/edit/save hota hai</h2>
+      <h3>5.1 Data load</h3>
+      <ul>
+        <li><code>/review/[id]</code> page extraction record fetch karta hai.</li>
+        <li>Client side form components normalized data render karte hain.</li>
+      </ul>
+
+      <h3>5.2 Edit behavior</h3>
+      <ul>
+        <li>User field edit karta hai (text/select/date etc.).</li>
+        <li>Conditional fields parent values ke basis par show/hide hoti hain.</li>
+      </ul>
+
+      <h3>5.3 Save behavior</h3>
+      <ul>
+        <li>Auto-save/debounced updates trigger hoti hain.</li>
+        <li><code>PATCH /api/extractions/[id]</code> mein latest <code>extracted_data</code> save hota hai.</li>
+        <li>Yahi reason hai next visit par updated values milti hain.</li>
+      </ul>
+
+      <h3>5.4 Next time data kaise milta hai</h3>
+      <ul>
+        <li>Jab page reopen hota hai, server DB se <code>extracted_data</code> re-fetch karta hai.</li>
+        <li>Client usse form state mein hydrate karta hai.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>6) Quote Preview aur Final Submit</h2>
+      <h3>6.1 Quote page load</h3>
+      <ul>
+        <li><code>/review/[id]/quote?type=home|auto|both</code></li>
+        <li>Raw DB data detect + transform hota hai before preview.</li>
+      </ul>
+
+      <h3>6.2 Validation</h3>
+      <ul>
+        <li>Field-level validation summary banayi jati hai.</li>
+        <li>Missing required fields highlight hote hain.</li>
+      </ul>
+
+      <h3>6.3 Submit</h3>
+      <ul>
+        <li><code>POST /api/quotes/submit</code></li>
+        <li>Validated fields ko structured quote payload mein convert karta hai.</li>
+        <li><code>quotes</code> table mein quote record create hota hai.</li>
+        <li>Optional webhook payload generate/send hota hai.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>7) APIs Used (Internal + External)</h2>
+      <div class="grid">
+        <div>
+          <h3>Internal APIs (Next.js)</h3>
+          <ul>
+            <li><code>POST /api/upload</code> - PDF upload + extraction row create</li>
+            <li><code>POST /api/extract</code> - PDF process + AI extraction + DB save</li>
+            <li><code>GET /api/extract?id=...</code> - extraction status</li>
+            <li><code>GET /api/extractions/[id]</code> - extraction fetch</li>
+            <li><code>PATCH /api/extractions/[id]</code> - edited data save (auto-save)</li>
+            <li><code>DELETE /api/extractions/[id]</code> - extraction + file delete</li>
+            <li><code>POST /api/quotes/validate</code> - quote data validation</li>
+            <li><code>POST /api/quotes/submit</code> - final quote submission</li>
+          </ul>
+        </div>
+        <div>
+          <h3>External Services / APIs</h3>
+          <ul>
+            <li><code>Supabase Auth</code> - user session/auth checks</li>
+            <li><code>Supabase Storage</code> - PDF file storage (<code>fact-finders</code>)</li>
+            <li><code>Supabase Database</code> - <code>extractions</code> & <code>quotes</code> tables</li>
+            <li><code>OpenRouter Chat Completions API</code> - Claude Vision extraction</li>
+            <li>Optional external webhook via <code>WEBHOOK_URL</code> for downstream automation</li>
+            <li>Optional Node backend integration via <code>NEXT_PUBLIC_NODE_BACKEND_URL</code> (quote generation/job status)</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>8) Data Storage Summary</h2>
+      <ul>
+        <li><span class="ok">PDF file:</span> Supabase Storage bucket <code>fact-finders</code>.</li>
+        <li><span class="ok">Extracted JSON:</span> <code>extractions.extracted_data</code> (JSONB).</li>
+        <li><span class="ok">Extraction lifecycle:</span> <code>pending -> processing -> completed/failed -> quoted</code>.</li>
+        <li><span class="ok">Final quote payload:</span> <code>quotes.quote_data</code>.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>9) Common Debug Checklist (for New Developers)</h2>
+      <ol>
+        <li>Field UI mein hai? Check <code>home-extraction.ts</code>/<code>auto-extraction.ts</code>.</li>
+        <li>Prompt mein field demand ki? Check <code>prompts.ts</code>.</li>
+        <li>Schema allow karta hai? Check <code>schemas.ts</code>.</li>
+        <li>Default object mein field initialized hai? Check <code>openrouter/client.ts</code> and <code>openrouter/defaults.ts</code>.</li>
+        <li>Transform map hua? Check <code>transform.ts</code>.</li>
+        <li>Review page save ho raha? Check <code>PATCH /api/extractions/[id]</code>.</li>
+        <li>Quote page par stale data to nahi? Force fresh fetch + save-before-navigation confirm karein.</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>10) Final Concept (Simple Words)</h2>
+      <p>
+        Project ka core idea yeh hai: <strong>PDF ko pehle safe upload karna, phir AI se structured JSON nikalna,
+        phir user ko editable form dena, phir edits ko DB mein persist karna, aur finally validated quote submit karna.</strong>
+      </p>
+      <p>
+        Is chain mein agar kisi step par field mapping miss ho jaye (prompt/schema/transform/UI), to auto-fill partial hota hai.
+        Isi liye har new field ko end-to-end sync karna zaroori hai.
+      </p>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,198 @@
+{
+  "metadata": {
+    "quoteId": "550e8400-e29b-41d4-a716-446655440000",
+    "extractionId": "123e4567-e89b-12d3-a456-426614174000",
+    "userId": "987fcdeb-51a2-3b4c-8d9e-0f1a2b3c4d5e",
+    "filename": "DEMO_Smith_Family_FactFinder.pdf",
+    "submittedAt": "2025-02-01T14:30:00.000Z",
+    "quoteType": "both",
+    "version": "1.0.0"
+  },
+  "personal": {
+    "firstName": "John",
+    "lastName": "Smith",
+    "dateOfBirth": "1985-06-15",
+    "ssn": "123-45-6789",
+    "phone": "(512) 555-1234",
+    "email": "john.smith@email.com",
+    "maritalStatus": "Married",
+    "occupation": "Software Engineer",
+    "spouseFirstName": "Sarah",
+    "spouseLastName": "Smith",
+    "spouseDateOfBirth": "1987-03-22",
+    "spouseSsn": "987-65-4321",
+    "spouseOccupation": "Marketing Manager",
+    "address": {
+      "street": "1234 Oak Street",
+      "city": "Austin",
+      "state": "TX",
+      "zipCode": "78701"
+    },
+    "yearsAtCurrentAddress": 7
+  },
+  "home": {
+    "property": {
+      "yearBuilt": 2005,
+      "squareFootage": 2450,
+      "numberOfStories": 2,
+      "bedroomCount": 4,
+      "bathroomCount": "2.5",
+      "dwellingType": "Single Family",
+      "constructionStyle": "Colonial",
+      "exteriorConstruction": "Frame/Masonry",
+      "roofAge": 5,
+      "roofConstruction": "Asphalt Shingle",
+      "roofShape": "Gable",
+      "foundation": "Slab",
+      "heatType": "Gas",
+      "garageType": "2 Car",
+      "garageLocation": "Attached",
+      "purchaseDate": "2018-03-01",
+      "condoOrTownhouse": false,
+      "specialFeatures": "Smart home system, sprinkler system"
+    },
+    "occupancy": {
+      "dwellingOccupancy": "Owner Occupied",
+      "businessOnPremises": false,
+      "shortTermRental": false,
+      "numberOfFamilies": 1
+    },
+    "safety": {
+      "alarmSystem": true,
+      "monitoredAlarm": true,
+      "pool": false,
+      "trampoline": false,
+      "dog": true,
+      "dogBreed": "Golden Retriever"
+    },
+    "coverage": {
+      "dwellingCoverage": "$450,000",
+      "liabilityCoverage": "$300,000",
+      "medicalPayments": "$5,000",
+      "deductible": "$1,000"
+    },
+    "scheduledItems": {
+      "jewelry": [
+        {
+          "description": "Diamond engagement ring",
+          "value": "$8,500"
+        },
+        {
+          "description": "Rolex watch",
+          "value": "$12,000"
+        }
+      ],
+      "otherValuables": [
+        {
+          "description": "Art collection - 3 original paintings",
+          "value": "$15,000"
+        }
+      ]
+    },
+    "insurance": {
+      "effectiveDate": "2025-02-15",
+      "reasonForPolicy": "Existing Home",
+      "currentlyInsured": "Yes - Different Carrier",
+      "currentInsuranceCompany": "State Farm",
+      "currentPolicyNumber": "HO-123456789",
+      "escrowed": true,
+      "lienholder": {
+        "name": "Chase Home Mortgage",
+        "address": "PO Box 78889",
+        "city": "Phoenix",
+        "state": "AZ",
+        "zipCode": "85062"
+      }
+    }
+  },
+  "auto": {
+    "effectiveDate": "2025-02-15",
+    "garagingAddress": {
+      "street": "1234 Oak Street",
+      "city": "Austin",
+      "state": "TX",
+      "zipCode": "78701"
+    },
+    "garagingAddressSameAsMailing": true,
+    "rideShare": false,
+    "delivery": false,
+    "drivers": [
+      {
+        "firstName": "John",
+        "lastName": "Smith",
+        "dateOfBirth": "1985-06-15",
+        "driversLicense": "12345678",
+        "licenseState": "TX",
+        "relationship": "Primary Insured",
+        "occupation": "Software Engineer",
+        "education": "Bachelor's Degree"
+      },
+      {
+        "firstName": "Sarah",
+        "lastName": "Smith",
+        "dateOfBirth": "1987-03-22",
+        "driversLicense": "87654321",
+        "licenseState": "TX",
+        "relationship": "Spouse",
+        "occupation": "Marketing Manager",
+        "education": "Master's Degree"
+      },
+      {
+        "firstName": "Emma",
+        "lastName": "Smith",
+        "dateOfBirth": "2006-09-10",
+        "driversLicense": "TXD9876543",
+        "licenseState": "TX",
+        "relationship": "Child",
+        "goodStudentDiscount": true
+      }
+    ],
+    "vehicles": [
+      {
+        "year": 2022,
+        "make": "Toyota",
+        "model": "Camry XSE",
+        "vin": "4T1BZ1HK1NU123456",
+        "usage": "Commute",
+        "estimatedMileage": 12000,
+        "ownership": "Financed",
+        "comprehensiveDeductible": "500",
+        "collisionDeductible": "500",
+        "lienholder": {
+          "name": "Toyota Financial Services",
+          "address": "PO Box 105386",
+          "city": "Atlanta",
+          "state": "GA",
+          "zipCode": "30348"
+        }
+      },
+      {
+        "year": 2021,
+        "make": "Honda",
+        "model": "CR-V EX-L",
+        "vin": "7FARW2H87ME123456",
+        "usage": "Pleasure",
+        "estimatedMileage": 15000,
+        "ownership": "Owned",
+        "comprehensiveDeductible": "500",
+        "collisionDeductible": "500"
+      }
+    ],
+    "coverage": {
+      "bodilyInjury": "250/500",
+      "propertyDamage": "100",
+      "uninsuredMotorist": "250/500",
+      "underinsuredMotorist": "250/500",
+      "medicalPayments": "5000",
+      "towing": true,
+      "rental": true
+    },
+    "priorInsurance": {
+      "company": "Progressive",
+      "premium": "$1,800/6 months",
+      "policyNumber": "AUTO-98765432",
+      "expirationDate": "2025-02-14"
+    },
+    "incidents": []
+  }
+}

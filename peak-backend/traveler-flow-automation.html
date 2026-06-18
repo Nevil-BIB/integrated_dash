@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Travelers Flow Automation — End-to-End Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c0f14;
+      --surface: #141a24;
+      --surface2: #1c2433;
+      --border: #2a3548;
+      --text: #e8edf5;
+      --muted: #8b9ab5;
+      --accent: #3b82f6;
+      --accent2: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --radius: 12px;
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 16px;
+    }
+
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 4rem;
+    }
+
+    header.hero {
+      text-align: center;
+      padding: 2.5rem 1.5rem 3rem;
+      background: linear-gradient(165deg, var(--surface) 0%, var(--bg) 55%);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2.5rem;
+    }
+
+    header.hero h1 {
+      margin: 0 0 0.75rem;
+      font-size: clamp(1.75rem, 4vw, 2.35rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    header.hero p.lead {
+      margin: 0 auto;
+      max-width: 640px;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-top: 1.25rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .badge.ok {
+      border-color: rgba(34, 197, 94, 0.35);
+      color: var(--accent2);
+    }
+
+    h2 {
+      margin: 2.75rem 0 1rem;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    h2 .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    h3 {
+      margin: 1.5rem 0 0.5rem;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    p {
+      margin: 0.5rem 0 1rem;
+      color: var(--muted);
+    }
+
+    ul, ol {
+      margin: 0.5rem 0 1rem;
+      padding-left: 1.35rem;
+      color: var(--muted);
+    }
+
+    li {
+      margin: 0.35rem 0;
+    }
+
+    code, .mono {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 0.88em;
+    }
+
+    .callout {
+      padding: 1rem 1.15rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      margin: 1rem 0;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    .callout strong {
+      color: var(--text);
+    }
+
+    .callout.warn {
+      border-color: rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.06);
+    }
+
+    .callout.danger {
+      border-color: rgba(239, 68, 68, 0.4);
+      background: rgba(239, 68, 68, 0.06);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.65rem 0.75rem;
+      text-align: left;
+    }
+
+    th {
+      background: var(--surface2);
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    td {
+      color: var(--muted);
+    }
+
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .toc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2rem;
+    }
+
+    .toc h3 {
+      margin: 0 0 0.75rem;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+
+    .toc ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .toc li {
+      margin: 0.4rem 0;
+    }
+
+    .toc a {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    /* Narrative step lists (minimal arrows; full explanations) */
+    .explained-steps {
+      list-style: none;
+      margin: 1.25rem 0 2rem;
+      padding: 0;
+      counter-reset: expl;
+    }
+
+    .explained-steps > li {
+      counter-increment: expl;
+      position: relative;
+      margin: 0 0 1rem;
+      padding: 1.1rem 1.15rem 1.1rem 3.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .explained-steps > li::before {
+      content: counter(expl);
+      position: absolute;
+      left: 1rem;
+      top: 1rem;
+      width: 1.85rem;
+      height: 1.85rem;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .explained-steps li strong {
+      color: var(--text);
+      display: block;
+      margin-bottom: 0.35rem;
+      font-size: 1rem;
+    }
+
+    .explained-steps li p {
+      margin: 0;
+      font-size: 0.95rem;
+    }
+
+    .then-line {
+      margin: -0.35rem 0 1rem 1.75rem;
+      padding-left: 1rem;
+      border-left: 3px solid var(--accent);
+      font-size: 0.88rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.25rem 0;
+      font-size: 0.92rem;
+    }
+
+    .summary-table th,
+    .summary-table td {
+      border: 1px solid var(--border);
+      padding: 0.7rem 0.85rem;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .summary-table th {
+      background: var(--surface2);
+      color: var(--text);
+      width: 28%;
+    }
+
+    .summary-table td {
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <h1>Travelers Flow Automation</h1>
+    <p class="lead">
+      A plain-language walkthrough of the Travelers automation: what happens first, what happens next, and why.
+      Each stage is explained in order — from quote generation through Skyvern, OTP delivery, n8n, and back to the browser.
+    </p>
+    <div class="badge-row">
+      <span class="badge ok">peak-backend (Express)</span>
+      <span class="badge">Skyvern 2 (self-hosted)</span>
+      <span class="badge">n8n</span>
+      <span class="badge">Redis</span>
+      <span class="badge">Microsoft 365 / Outlook</span>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <nav class="toc" aria-label="Table of contents">
+      <h3>Contents</h3>
+      <ul>
+        <li><a href="#master-sequence">0. Full story in order (read this first)</a></li>
+        <li><a href="#big-picture">1. Who does what (roles)</a></li>
+        <li><a href="#phase-redis">2. Redis — why we need it</a></li>
+        <li><a href="#phase-backend">3. Backend — quote, OTP webhook, Skyvern poll URL</a></li>
+        <li><a href="#phase-n8n">4. n8n — from inbox to webhook</a></li>
+        <li><a href="#phase-skyvern-api">5. Skyvern API — starting a run</a></li>
+        <li><a href="#phase-skyvern-ui">6. Skyvern UI — login block &amp; OTP behaviour</a></li>
+        <li><a href="#phase-generate-quote">7. Generate-quote path in detail</a></li>
+        <li><a href="#phase-env">8. Environment variables checklist</a></li>
+        <li><a href="#phase-security">9. Security &amp; operations</a></li>
+      </ul>
+    </nav>
+
+    <section id="master-sequence">
+      <h2><span class="num">0</span> Full story in order</h2>
+      <p>
+        Below is the real sequence of events when someone triggers a Travelers quote. Read top to bottom: each step names
+        <strong>who</strong> acts and <strong>what</strong> happens before the next step can occur.
+      </p>
+
+      <ol class="explained-steps">
+        <li>
+          <strong>User or frontend asks for a quote</strong>
+          <p>
+            The app sends a request to peak-backend to start automation. The body usually includes review data (payload)
+            and ideally a stable <strong>extraction id</strong> so double-clicks do not start two Skyvern runs for the same document.
+            The backend answers quickly with “accepted” and hands back identifiers the rest of the system will use.
+          </p>
+        </li>
+        <li>
+          <strong>Backend creates a fresh job identity</strong>
+          <p>
+            For each new run the backend generates a <strong>job id</strong> (and usually a quote id). This job id is known
+            <em>before</em> Skyvern returns its own run id. That is important: we can build OTP URLs and tell n8n which job
+            this OTP belongs to without waiting for the browser to start.
+          </p>
+        </li>
+        <li>
+          <strong>Backend asks Skyvern to start the workflow</strong>
+          <p>
+            The integration calls the Skyvern API with the workflow id and parameters (Travelers carrier, credentials reference,
+            payload, job id, quote id). Skyvern schedules a run and eventually opens a real browser session against the Travelers agent site.
+          </p>
+        </li>
+        <li>
+          <strong>Skyvern responds with a workflow run id</strong>
+          <p>
+            When the API returns, the backend reads Skyvern’s <strong>run id</strong> (the wr_… value). It stores a mapping in Redis:
+            this job id goes with this Skyvern run id. That mapping expires after a few minutes, same idea as OTP freshness.
+          </p>
+        </li>
+        <li>
+          <strong>Skyvern drives login in the browser</strong>
+          <p>
+            The agent fills username and password from saved credentials, submits the form, and may land on an identity check screen
+            (for example “send SMS code” and “enter code”). The login block may also be configured with a <strong>verification URL</strong>
+            Skyvern can call to obtain a code while the session waits.
+          </p>
+        </li>
+        <li>
+          <strong>Travelers sends an OTP (typically SMS)</strong>
+          <p>
+            The carrier does not call our API directly. The code appears on a phone or, if the team set it up, arrives as email
+            after SMS-to-email or forwarding into the automation mailbox (for example automation@…).
+          </p>
+        </li>
+        <li>
+          <strong>n8n notices new mail in the monitored inbox</strong>
+          <p>
+            The Outlook (or IMAP) trigger runs when a new message arrives. A code node reads subject and body, finds a six-digit code,
+            and prepares a small JSON object: carrier, otp, timestamps, and correlation fields (job id and/or Skyvern run id when available).
+          </p>
+        </li>
+        <li>
+          <strong>n8n calls the backend OTP webhook</strong>
+          <p>
+            An HTTP request posts that JSON to peak-backend. If a shared secret is configured, the request must include it or the
+            backend rejects the call. On success, the backend stores the OTP in Redis under a key tied to carrier and Skyvern run id
+            (and keeps the latest job mapping separate for lookups by job id).
+          </p>
+        </li>
+        <li>
+          <strong>Skyvern polls the backend for the code</strong>
+          <p>
+            While the MFA screen is open, Skyvern repeatedly calls the public OTP URL you configured (often via ngrok), passing the
+            <strong>job id</strong> as a query parameter. The backend resolves job id → Skyvern run id, then reads the OTP record from Redis.
+            When a code is present, the response body is plain six digits so the automation client can paste it into the field.
+            Polling may happen more than once; the backend is designed so Skyvern can retry until verify succeeds or times out.
+          </p>
+        </li>
+        <li>
+          <strong>Agent enters the code and continues</strong>
+          <p>
+            If the code is correct and the page accepts it, the session moves past MFA toward dashboard or quote flow. If the code is wrong,
+            expired, or the UI never receives a successful poll, the run may terminate even though one HTTP request returned success earlier.
+          </p>
+        </li>
+        <li>
+          <strong>Parallel runs and stale job ids</strong>
+          <p>
+            If a <em>new</em> quote is started while an old run still polls, the “latest job” pointer updates. Polls that still use an old
+            job id may be rejected on purpose so two automations do not steal each other’s OTP. Operational fix: cancel old Skyvern runs and
+            avoid double-submitting generate-quote; sending the same extraction id helps the backend dedupe within the TTL window.
+          </p>
+        </li>
+      </ol>
+
+      <div class="callout warn">
+        <strong>Client / IT alignment</strong> — Real Travelers OTPs must reach the mailbox (or path) n8n reads. Twilio or SMS-to-email
+        forwarding are org decisions; this document describes how pieces connect once OTP data is available to automation.
+      </div>
+    </section>
+
+    <section id="big-picture">
+      <h2><span class="num">1</span> Who does what (roles)</h2>
+      <p>
+        Think of four cooperating systems. None of them alone completes the quote; they pass responsibility forward in time.
+      </p>
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>System</th>
+            <th>Responsibility in this flow</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>peak-backend</strong></td>
+            <td>Accepts quote requests, starts Skyvern, stores job↔run mapping and OTP in Redis, exposes webhooks and the URL Skyvern polls for codes.</td>
+          </tr>
+          <tr>
+            <td><strong>Skyvern</strong></td>
+            <td>Runs the browser, logs into Travelers, handles MFA by fetching a code from your backend when configured, then continues the scripted workflow.</td>
+          </tr>
+          <tr>
+            <td><strong>n8n</strong></td>
+            <td>Watches email, extracts the six-digit OTP, and pushes it securely into peak-backend so Redis holds the code Skyvern will read.</td>
+          </tr>
+          <tr>
+            <td><strong>Redis</strong></td>
+            <td>Short-lived memory shared by backend processes: mappings and OTP records with TTL so old runs do not linger forever.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>Order reminder:</strong> generate-quote and Skyvern start happen <em>before</em> the OTP is in Redis. The OTP path
+        (carrier → inbox → n8n → webhook) can finish slightly before, during, or after Skyvern hits the MFA screen; polling bridges the timing gap.
+      </p>
+    </section>
+
+    <section id="phase-redis">
+      <h2><span class="num">2</span> Redis — why it exists in this flow</h2>
+      <p>
+        Redis is a small, fast database kept in memory. We use it as a <strong>shared scratchpad</strong> between HTTP requests:
+        one request stores an OTP, another request (from Skyvern) reads it seconds later. Nothing permanent lives there—entries expire automatically.
+      </p>
+
+      <ol class="explained-steps">
+        <li>
+          <strong>What we store conceptually</strong>
+          <p>
+            (a) <em>Job ↔ Skyvern run</em> — after the backend starts Skyvern, it remembers which workflow run id belongs to which job id until TTL expires.
+            (b) <em>OTP by carrier + run id</em> — when n8n posts a code, we file it under the Travelers run so Skyvern’s poll can find it.
+            (c) <em>Latest job pointer</em> — optional guard so stale polls from an older run do not hijack the newest run.
+            (d) <em>In-flight quote dedupe</em> — optional slot so the same extraction id does not spawn two Skyvern runs within the TTL window.
+          </p>
+        </li>
+        <li>
+          <strong>Why TTL matters</strong>
+          <p>
+            OTPs are only valid for a short time on the carrier side. Automatically deleting Redis keys after a few minutes avoids serving ancient codes
+            and reduces risk if someone ever read stale data.
+          </p>
+        </li>
+        <li>
+          <strong>Operator setup (short checklist)</strong>
+          <p>
+            Run a Redis instance reachable from peak-backend (commonly Docker on port 6379). Point the backend at it via environment configuration.
+            Use the project’s Redis smoke script once to confirm connectivity before relying on OTP flows.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="phase-backend">
+      <h2><span class="num">3</span> Backend — quote start, OTP ingest, Skyvern poll</h2>
+      <p>
+        peak-backend is the hub. It does not read email itself; it exposes HTTP endpoints that the frontend, n8n, and Skyvern each call at different moments.
+      </p>
+
+      <ol class="explained-steps">
+        <li>
+          <strong>Generate quote (first external call in the automation)</strong>
+          <p>
+            The client calls the backend to <em>start</em> a Travelers run. The backend creates identifiers, calls Skyvern’s API, then saves job↔run mapping when Skyvern answers.
+            The HTTP response returns those identifiers to the client so tooling (and n8n bridges) can correlate OTPs with the right browser session.
+          </p>
+        </li>
+        <li>
+          <strong>OTP webhook (n8n → backend, after mail arrives)</strong>
+          <p>
+            This is the second major path. n8n sends the six-digit code plus correlation: the Skyvern workflow run id (and optionally the same job id the backend already issued).
+            The backend checks a shared secret if configured, validates the code shape, resolves the real Skyvern run id if n8n only had a job id, then writes the OTP into Redis against that run.
+          </p>
+        </li>
+        <li>
+          <strong>Skyvern OTP poll URL (Skyvern → backend, during MFA)</strong>
+          <p>
+            While the login block waits for a code, Skyvern repeatedly calls a <em>public</em> URL (often exposed through ngrok) with the job id in the query string.
+            The backend looks up the run id, fetches the OTP record, and returns plain text digits. Skyvern may call multiple times; responses must stay consistent with what their client expects until verification completes or times out.
+          </p>
+        </li>
+        <li>
+          <strong>Latest-job helper (optional automation bridge)</strong>
+          <p>
+            A separate authenticated endpoint can return the current job id and Skyvern run id for workflows that fetch “who is active” before posting OTP. This is convenience, not a substitute for passing ids explicitly when you can.
+          </p>
+        </li>
+        <li>
+          <strong>Manual read API</strong>
+          <p>
+            For debugging or alternative clients, the backend can expose a JSON read of stored OTP by carrier and run id, with an optional “consume” mode that removes the key after read.
+          </p>
+        </li>
+        <li>
+          <strong>Guards you should understand</strong>
+          <p>
+            If a poll uses a job id that is no longer the “latest” active job, the backend may reject it so two concurrent quotes do not cross wires. If mapping expired in Redis, polls fail until a new generate-quote refreshes state.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="phase-n8n">
+      <h2><span class="num">4</span> n8n — from inbox to backend (sequential story)</h2>
+      <p>
+        n8n’s job is only: <strong>turn an email that contains an OTP into a trusted HTTP call</strong> that peak-backend can store. It does not drive the browser; Skyvern does.
+      </p>
+
+      <ol class="explained-steps">
+        <li>
+          <strong>Step 1 — Something must wake the workflow</strong>
+          <p>
+            Prefer an <em>email received</em> trigger on the automation mailbox so work runs when a new message actually lands. Polling “get many messages” on a timer works for experiments but is easy to misconfigure (wrong folder, message limits, old mail in the batch).
+          </p>
+        </li>
+        <li>
+          <strong>Step 2 — Confirm it is the right message</strong>
+          <p>
+            Optional filters (subject, sender, keywords) reduce noise so Travelers OTP mail is not confused with unrelated newsletters.
+          </p>
+        </li>
+        <li>
+          <strong>Step 3 — Extract the six digits</strong>
+          <p>
+            A function or code step scans subject and body for a six-digit code. If none is found, the branch should stop—there is nothing useful to send yet.
+          </p>
+        </li>
+        <li>
+          <strong>Step 4 — Attach correlation for Redis</strong>
+          <p>
+            The webhook must tie this OTP to the <em>same</em> Skyvern run the browser is in. In practice that means including the workflow run id returned when the quote was started (and the job id from the backend when you have it). Without that alignment, the backend stores the code under the wrong key and Skyvern’s poll returns empty.
+          </p>
+        </li>
+        <li>
+          <strong>Step 5 — POST to peak-backend</strong>
+          <p>
+            The HTTP node sends JSON to the OTP webhook path. If the team configured a shared secret, the same secret must appear on the request or the backend refuses the call. A success response means Redis now holds the code for Skyvern’s next poll.
+          </p>
+        </li>
+        <li>
+          <strong>Step 6 — Avoid duplicate posts</strong>
+          <p>
+            The same email should not fire the webhook twice (dedupe by message id or similar). Duplicate posts can overwrite or confuse timing.
+          </p>
+        </li>
+      </ol>
+
+      <div class="callout">
+        <strong>Mailbox reality check:</strong> The inbox n8n connects to must be the one where OTP <em>arrives</em> (after forwarding or SMS-to-email). Seeing a message in “Sent” from a personal account does not prove the automation mailbox received it.
+      </div>
+    </section>
+
+    <section id="phase-skyvern-api">
+      <h2><span class="num">5</span> Skyvern API — how a run actually starts</h2>
+      <p>
+        peak-backend does not open a browser itself. It talks to Skyvern’s <strong>JSON API</strong>. That call is what creates the workflow run you later see in the Skyvern UI.
+      </p>
+
+      <ol class="explained-steps">
+        <li>
+          <strong>Use the API host, not the human UI</strong>
+          <p>
+            The clickable Skyvern interface and the machine API often live on different ports. The integration must target the API port; otherwise the server answers with HTML and the backend cannot parse a run id.
+          </p>
+        </li>
+        <li>
+          <strong>Identify the workflow</strong>
+          <p>
+            Each saved workflow has a stable id. The backend sends that id so Skyvern knows <em>which</em> login + navigation script to execute (Travelers portal, credential reference, goals you defined in the UI).
+          </p>
+        </li>
+        <li>
+          <strong>Send parameters for this specific attempt</strong>
+          <p>
+            When enabled, the payload includes job id, quote id, carrier list, and the merged form data. The integration may also attach a <em>public backend URL</em> and job id so Skyvern’s login block knows where to poll for MFA codes.
+          </p>
+        </li>
+        <li>
+          <strong>Accept the response and learn the run id</strong>
+          <p>
+            Skyvern returns structured JSON describing the new run. The backend normalises different possible field names into one run id, then continues with Redis mapping and the client response.
+          </p>
+        </li>
+        <li>
+          <strong>Compatibility across Skyvern versions</strong>
+          <p>
+            Self-hosted installs vary slightly. The integration may try more than one official run endpoint until one succeeds, so upgrades on the Skyvern side are less brittle.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="phase-skyvern-ui">
+      <h2><span class="num">6</span> Skyvern UI — what the agent does in the browser</h2>
+      <p>
+        The workflow you design in Skyvern is the <strong>playbook</strong>: open this URL, use this credential set, complete this goal, stop or continue on certain screens.
+      </p>
+
+      <ol class="explained-steps">
+        <li>
+          <strong>Credentials live in Skyvern, not in the chat</strong>
+          <p>
+            The automation browser is isolated. You register Travelers username/password (or a vault-backed credential) once; workflows reference that credential by id.
+          </p>
+        </li>
+        <li>
+          <strong>Login block: username, password, then MFA</strong>
+          <p>
+            The agent types into fields and clicks sign-in. If Travelers shows SMS verification, the UI may show “send code” and “enter code.” The login block can be configured with a <strong>verification URL</strong> Skyvern calls to obtain the digits while the page waits.
+          </p>
+        </li>
+        <li>
+          <strong>Parameter injection vs dynamic poll</strong>
+          <p>
+            You can pass a static placeholder OTP for experiments, but production relies on the poll URL hitting peak-backend, which only returns a code after n8n has pushed it—so the order is: MFA screen appears → Skyvern polls → (parallel) mail arrives → n8n webhook → poll succeeds → agent fills the field.
+          </p>
+        </li>
+        <li>
+          <strong>Why a run can still fail after one successful poll</strong>
+          <p>
+            Wrong or expired codes, extra “send code” clicks, or Skyvern retrying after Redis no longer has the record all show up as MFA failures. The UI message may still say “failed to get TOTP” even when the underlying issue is verification or timing.
+          </p>
+        </li>
+        <li>
+          <strong>Beyond login — quote steps</strong>
+          <p>
+            After MFA, additional blocks (or the same workflow) must describe navigating to rating, filling applicant data, and submitting. A workflow that ends immediately after login never completes a quote.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="phase-generate-quote">
+      <h2><span class="num">7</span> Generate-quote path — tying the sequence together</h2>
+      <p>
+        This is the <strong>first hop</strong> in the automation chain. Everything else (n8n, polling) assumes this hop already created a job id and started Skyvern.
+      </p>
+
+      <ol class="explained-steps">
+        <li>
+          <strong>Client submits quote intent</strong>
+          <p>
+            Typical body includes structured field data for the quote and, ideally, a stable extraction id per document so duplicate submits reuse one in-flight run instead of spawning parallel Skyvern jobs.
+          </p>
+        </li>
+        <li>
+          <strong>Backend chooses Travelers-only behaviour</strong>
+          <p>
+            Current product focus routes through the Travelers integration path only; other carriers are intentionally not started by this entry point.
+          </p>
+        </li>
+        <li>
+          <strong>Payload shaping for Skyvern</strong>
+          <p>
+            Sensitive credential references and defaults are merged from server configuration so clients do not have to embed secrets. Optional dev defaults for OTP exist for testing but real runs depend on n8n + Redis.
+          </p>
+        </li>
+        <li>
+          <strong>Skyvern invocation and mapping write</strong>
+          <p>
+            After the API accepts the run, the backend records job↔run in Redis so OTP storage and poll resolution can use either identifier n8n has available.
+          </p>
+        </li>
+        <li>
+          <strong>Immediate response to the client</strong>
+          <p>
+            The API answers with “accepted” and returns quote id, job id, and Skyvern run id when present. The browser automation continues asynchronously; the client should not assume the quote is finished when this response returns.
+          </p>
+        </li>
+        <li>
+          <strong>What happens next (by design)</strong>
+          <p>
+            <em>Then</em> Skyvern runs the browser. <em>Then</em> MFA may appear. <em>Then</em> Skyvern polls peak-backend. <em>In parallel</em> the carrier delivers OTP to mail/SMS. <em>Then</em> n8n posts the webhook. <em>Then</em> polls succeed and the agent can verify and continue.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="phase-env">
+      <h2><span class="num">8</span> Environment variables checklist</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code class="mono">SKYVERN_API_URL</code></td><td>API base, typically <code class="mono">http://&lt;host&gt;:8000</code></td></tr>
+          <tr><td><code class="mono">SKYVERN_API_KEY</code></td><td>Auth for Skyvern API</td></tr>
+          <tr><td><code class="mono">SKYVERN_WORKFLOW_ID</code></td><td><code class="mono">wpid_...</code> from UI Network when running workflow</td></tr>
+          <tr><td><code class="mono">SKYVERN_WORKFLOW_SEND_PARAMETERS</code></td><td><code class="mono">true</code> when workflow declares parameters</td></tr>
+          <tr><td><code class="mono">SKYVERN_TRAVELER_CREDENTIAL</code></td><td>Default <code class="mono">cred_...</code> for workflow param</td></tr>
+          <tr><td><code class="mono">SKYVERN_TRAVELER_OTP_DEFAULT</code></td><td>Dev-only default OTP; replace with dynamic flow</td></tr>
+          <tr><td><code class="mono">SKYVERN_RUN_TASK_PATH</code></td><td>Legacy ad-hoc task API if workflow id empty</td></tr>
+          <tr><td><code class="mono">REDIS_URL</code></td><td>Redis connection string</td></tr>
+          <tr><td><code class="mono">OTP_TTL_SECONDS</code></td><td>OTP key TTL (seconds)</td></tr>
+          <tr><td><code class="mono">BACKEND_PUBLIC_URL</code></td><td>Public base URL Skyvern/ngrok can reach; used to build the OTP poll URL and debug logs for job id alignment</td></tr>
+          <tr><td><code class="mono">WEBHOOK_SECRET</code></td><td>Shared secret for n8n → <code class="mono">/webhooks/otp</code></td></tr>
+          <tr><td><code class="mono">PORT</code></td><td>Backend port (default 7001)</td></tr>
+        </tbody>
+      </table>
+      <p class="then-line">Same TTL drives OTP keys, job mapping, latest-job pointer, and in-flight dedupe window unless you split them in code later.</p>
+    </section>
+
+    <section id="phase-security">
+      <h2><span class="num">9</span> Security &amp; operations</h2>
+      <ul>
+        <li>Do not commit real environment files or paste API keys into chat; rotate anything that was ever exposed.</li>
+        <li>Treat OTP as sensitive: short TTL, avoid full codes in production logs, mask in operator consoles.</li>
+        <li>Keep <strong>Skyvern workflow run id</strong> aligned between n8n’s webhook payload and Redis; job id is a bridge when run id is not yet known to n8n.</li>
+        <li>Terminate or cancel old Skyvern runs when starting a new quote to avoid stale polls against outdated job ids.</li>
+        <li>Self-hosted Skyvern often runs beside UI, database, and proxy containers—confirm what is running on your host before debugging network paths.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Document: <code class="mono">traveler-flow-automation.html</code> — peak-backend Travelers automation (narrative guide). Open in any browser; no build step required.
+    </footer>
+  </div>
+</body>
+</html>

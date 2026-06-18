@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>N8N + Docker OTP Flow</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+      .container {
+        max-width: 900px;
+        margin: 32px auto;
+        padding: 24px;
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 10px;
+      }
+      h1, h2 {
+        color: #f8fafc;
+      }
+      h1 {
+        margin-top: 0;
+        border-bottom: 1px solid #334155;
+        padding-bottom: 12px;
+      }
+      code {
+        background: #1f2937;
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: #93c5fd;
+      }
+      ul, ol {
+        margin-top: 8px;
+      }
+      .section {
+        margin-top: 26px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>N8N + Docker OTP Flow (Easy Guide)</h1>
+
+      <div class="section">
+        <h2>Purpose</h2>
+        <p>Is document ka maqsad simple tareeqay se samjhana hai:</p>
+        <ol>
+          <li>Hum Docker aur n8n kyun use kar rahe hain,</li>
+          <li>Setup kaise karna hai,</li>
+          <li>Client ki email se OTP kaise read karke backend ko bhejna hai.</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h2>1) Hum Docker kyun use kar rahe hain?</h2>
+        <ul>
+          <li>Windows pe kuch Node packages (native build) install issues dete hain.</li>
+          <li>Docker se ready-made container chalta hai aur local dependency errors avoid hotay hain.</li>
+          <li>Environment stable rehta hai: team ke sab members same setup use kar sakte hain.</li>
+          <li>Easy start/stop: <code>docker compose up -d</code> / <code>docker compose down</code></li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>2) n8n kya role play karta hai?</h2>
+        <p>n8n humara automation engine hai:</p>
+        <ul>
+          <li>Jab OTP email aaye - trigger chale,</li>
+          <li>Email content se 6-digit OTP nikaale,</li>
+          <li>OTP humare backend webhook ko POST kare.</li>
+        </ul>
+        <p><strong>Simple logic:</strong> "Jab X ho, to Y karo"</p>
+        <ul>
+          <li>X = OTP email aayi</li>
+          <li>Y = OTP extract karke backend ko bhejo</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>3) High-Level End-to-End Flow</h2>
+        <ol>
+          <li>Client side se carrier OTP emails <code>automation@peakinsurance.com</code> par forward hoti hain.</li>
+          <li>n8n Email Trigger inbox monitor karta hai.</li>
+          <li>n8n Code node email text me se OTP regex se nikalta hai.</li>
+          <li>n8n HTTP Request node backend endpoint hit karta hai: <code>POST /webhooks/otp</code></li>
+          <li>Backend OTP receive karta hai aur automation flow ko continue karta hai.</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h2>4) Docker + n8n Setup Steps</h2>
+        <ol>
+          <li>Docker Desktop install + engine running confirm.</li>
+          <li><code>C:\n8n-docker</code> folder me <code>docker-compose.yml</code> create karo.</li>
+          <li>Compose run karo: <code>docker compose up -d</code></li>
+          <li>Browser me open karo: <code>http://localhost:5678</code></li>
+          <li>n8n owner account create karo.</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h2>5) n8n Workflow Steps (Practical)</h2>
+        <p>Workflow name: <code>Travelers OTP -&gt; Backend Webhook</code></p>
+        <p><strong>Node 1: Email Trigger</strong></p>
+        <ul>
+          <li>Mailbox: <code>INBOX</code></li>
+          <li>Credential: IMAP/Outlook/Gmail (jo provider ho)</li>
+          <li>Poll interval: 1 min</li>
+          <li>Optional filter: subject contains OTP/verification</li>
+        </ul>
+
+        <p><strong>Node 2: Code (OTP Extract)</strong></p>
+        <ul>
+          <li>Email subject/body read karo</li>
+          <li>Regex use karo: <code>\b(\d{6})\b</code></li>
+          <li>Output: <code>carrier</code>, <code>otp</code>, <code>extractedAt</code>, <code>valid</code></li>
+        </ul>
+
+        <p><strong>Node 3: IF</strong></p>
+        <ul>
+          <li><code>valid == true</code> ho to next step</li>
+          <li>false ho to ignore ya alert</li>
+        </ul>
+
+        <p><strong>Node 4: HTTP Request (Backend Webhook)</strong></p>
+        <ul>
+          <li>Method: POST</li>
+          <li>URL: <code>http://host.docker.internal:7001/api/quotes/webhooks/otp</code></li>
+          <li>Header: <code>x-webhook-secret: &lt;WEBHOOK_SECRET&gt;</code></li>
+          <li>JSON body: <code>carrier</code>, <code>otp</code>, <code>extractedAt</code></li>
+        </ul>
+
+        <p><strong>Node 5: Activate Workflow</strong></p>
+        <ul>
+          <li>Workflow ON rakho taake real-time emails process hon.</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>6) Client se kya chahiye?</h2>
+        <ul>
+          <li><code>automation@peakinsurance.com</code> mailbox access (password/app-password)</li>
+          <li>Mail provider details (Outlook/Gmail/custom IMAP)</li>
+          <li>Agar custom IMAP ho: host, port, SSL details</li>
+          <li>OTP sender examples (2-3 sample emails/senders/subjects)</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>7) Client ko forwarding me kya karna hai?</h2>
+        <p><strong>Case A: OTP email par aata hai</strong></p>
+        <ul>
+          <li>Outlook/Gmail rule set karein</li>
+          <li>Condition: sender = carrier OTP sender</li>
+          <li>Action: forward to <code>automation@peakinsurance.com</code></li>
+        </ul>
+        <p><strong>Case B: OTP SMS par aata hai</strong></p>
+        <ul>
+          <li>Phone me SMS-to-email auto-forward setup karein</li>
+          <li>Ya Twilio fallback use karein</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>8) Security Rules (Must)</h2>
+        <ul>
+          <li>Credentials chat me share na karein.</li>
+          <li>Real secrets code ya git me commit na karein.</li>
+          <li><code>WEBHOOK_SECRET</code> must use karein.</li>
+          <li>Logs me raw OTP/password show na karein.</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>9) Verification Checklist</h2>
+        <ul>
+          <li>[ ] Docker engine running</li>
+          <li>[ ] n8n UI open on localhost:5678</li>
+          <li>[ ] Email Trigger test successful</li>
+          <li>[ ] OTP extract test successful (6-digit)</li>
+          <li>[ ] Backend webhook returns 200</li>
+          <li>[ ] Workflow activated</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>Short Conclusion</h2>
+        <p>
+          Humne Docker isliye use kiya taake n8n stable aur quickly run ho. n8n inbox monitor karega,
+          OTP extract karega, aur backend ko send karega. Is se OTP automation manual steps ke baghair
+          chal sakti hai, jab client forwarding properly set kare.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

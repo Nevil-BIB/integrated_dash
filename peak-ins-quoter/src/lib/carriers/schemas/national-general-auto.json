@@ -1,0 +1,207 @@
+{
+  "id": "national-general-auto",
+  "carrierId": "nationalGeneral",
+  "productType": "auto",
+  "label": "National General Auto",
+  "description": "National General Personal Auto (PPAMid) quote payload",
+  "version": "1.1.0",
+  "automation": {
+    "route": "nationalGeneral",
+    "submitPath": "/api/generate-quote/playwright/national-general",
+    "statusPath": "/api/generate-quote/playwright/national-general/:jobId"
+  },
+  "payload": {
+    "supportsFlatKeys": false,
+    "supportsNestedObjects": true,
+    "supportsFieldsArray": true,
+    "notes": "Source aligned to provided schema.json. Primary payload is namedInsured/drivers/vehicles/underwriting/coverages."
+  },
+  "formatRules": {
+    "date": "MM/DD/YYYY",
+    "yesNo": ["Yes", "No"],
+    "checkbox": "yes/true/1/y => true; no/false/0/n => false",
+    "dropdown": "Use exact option values/codes from schema where provided"
+  },
+  "nonPayload": [
+    {
+      "id": "credentials",
+      "source": "env",
+      "keys": [
+        "NATIONAL_GENERAL_USERNAME",
+        "NATIONAL_GENERAL_PASSWORD"
+      ]
+    },
+    {
+      "id": "otpWebhook",
+      "source": "env",
+      "key": "NATIONAL_GENERAL_OTP_WEBHOOK_URL"
+    }
+  ],
+  "sections": [
+    {
+      "id": "named-insured",
+      "title": "Named Insured (NamedInsured.aspx)",
+      "automationStep": "named-insured",
+      "fields": [
+        { "key": "namedInsured.effectiveDate", "label": "Effective Date", "type": "date", "required": false },
+        { "key": "namedInsured.producer", "label": "Producer", "type": "dropdown", "required": false, "options": ["1617475","165367","1519475","1843488","1159588","1392846","1617472","167237","750191","1420607","748263","780842","1238296","642588","1683730"] },
+        { "key": "namedInsured.inputBy", "label": "Input By", "type": "dropdown", "required": false, "options": ["10721007","20071063","20059802","20014665","20055611","20019770","20078834","20063384"] },
+        { "key": "namedInsured.planCode", "label": "Plan Code", "type": "dropdown", "required": false, "options": ["M","3C","G5","R5","M9"] },
+        { "key": "namedInsured.firstName", "label": "First Name", "type": "text", "required": true },
+        { "key": "namedInsured.middleName", "label": "Middle Name", "type": "text", "required": false },
+        { "key": "namedInsured.lastName", "label": "Last Name", "type": "text", "required": true },
+        { "key": "namedInsured.suffix", "label": "Suffix", "type": "dropdown", "required": false, "options": ["NONE","Jr","Sr","II","III","IV","V","VI","Rd"] },
+        { "key": "namedInsured.phone.areaCode", "label": "Phone Area Code", "type": "text", "required": false },
+        { "key": "namedInsured.phone.exchange", "label": "Phone Exchange", "type": "text", "required": false },
+        { "key": "namedInsured.phone.number", "label": "Phone Number", "type": "text", "required": false },
+        { "key": "namedInsured.phone.type", "label": "Phone Type", "type": "dropdown", "required": false, "options": ["1","2","3"] },
+        { "key": "namedInsured.email", "label": "Email", "type": "text", "required": false },
+        { "key": "namedInsured.dateOfBirth", "label": "Date of Birth", "type": "date", "required": true },
+        { "key": "namedInsured.socialSecurity.part1", "label": "SSN Part 1", "type": "text", "required": false },
+        { "key": "namedInsured.socialSecurity.part2", "label": "SSN Part 2", "type": "text", "required": false },
+        { "key": "namedInsured.socialSecurity.part3", "label": "SSN Part 3", "type": "text", "required": false },
+        { "key": "namedInsured.mailingAddress", "label": "Mailing Address", "type": "text", "required": true },
+        { "key": "namedInsured.mailingAddress2", "label": "Mailing Address 2", "type": "text", "required": false },
+        { "key": "namedInsured.city", "label": "City", "type": "text", "required": true },
+        { "key": "namedInsured.state", "label": "State", "type": "dropdown", "required": false, "options": ["AK","AL","AR","AZ","CA","CO","CT","DC","DE","FL","GA","HI","IA","ID","IL","IN","KS","KY","LA","MA","MD","ME","MI","MN","MO","MS","MT","NC","ND","NE","NH","NJ","NM","NV","NY","OH","OK","OR","PA","PR","RI","SC","SD","TN","TX","UT","VA","VT","WA","WI","WV","WY"] },
+        { "key": "namedInsured.zipCode", "label": "Zip Code", "type": "text", "required": true },
+        { "key": "namedInsured.zipCode2", "label": "Zip+4", "type": "text", "required": false },
+        { "key": "namedInsured.movedInLast60Days", "label": "Moved in last 60 days", "type": "checkbox", "required": false },
+        { "key": "namedInsured.previousAddress", "label": "Previous Address", "type": "text", "required": false },
+        { "key": "namedInsured.previousAddress2", "label": "Previous Address 2", "type": "text", "required": false },
+        { "key": "namedInsured.previousCity", "label": "Previous City", "type": "text", "required": false },
+        { "key": "namedInsured.previousState", "label": "Previous State", "type": "dropdown", "required": false, "options": ["AK","AL","AR","AZ","CA","CO","CT","DC","DE","FL","GA","HI","IA","ID","IL","IN","KS","KY","LA","MA","MD","ME","MI","MN","MO","MS","MT","NC","ND","NE","NH","NJ","NM","NV","NY","OH","OK","OR","PA","PR","RI","SC","SD","TN","TX","UT","VA","VT","WA","WI","WV","WY"] },
+        { "key": "namedInsured.previousZip", "label": "Previous Zip", "type": "text", "required": false },
+        { "key": "namedInsured.previousZip2", "label": "Previous Zip+4", "type": "text", "required": false }
+      ]
+    },
+    {
+      "id": "drivers",
+      "title": "Drivers (InsuredDriver.aspx)",
+      "automationStep": "drivers",
+      "fields": [
+        {
+          "key": "drivers",
+          "label": "Drivers",
+          "type": "array",
+          "required": true,
+          "itemSchema": {
+            "firstName": { "type": "text" },
+            "middleName": { "type": "text" },
+            "lastName": { "type": "text" },
+            "suffix": { "type": "dropdown", "options": ["NONE","Jr","Sr","II","III","IV","V","VI","Rd"] },
+            "dateOfBirth": { "type": "date" },
+            "gender": { "type": "dropdown", "options": ["M","F"] },
+            "maritalStatus": { "type": "dropdown", "options": ["M","S","D","H","P","W"] },
+            "relationship": { "type": "dropdown", "required": true, "options": ["Named Insured","Spouse","Child","Parent","Other"] },
+            "driverStatus": { "type": "dropdown", "required": true, "options": ["Excluded Driver","Listed Driver","Non Driver","Other Insurance","Rated Driver"] },
+            "licenseStatus": { "type": "dropdown", "required": true, "options": ["Valid","Suspended","PermanentlyRevokedLicense","Permit","Surrendered","Revoked","RevokedNotPerm","Cancelled","Expired","NotNeverLicensed","UnknownLicense","InternationalLicense"] },
+            "hasCDL": { "type": "checkbox" },
+            "dynamicDrive": { "type": "checkbox" },
+            "licenseState": { "type": "dropdown", "options": ["AK","AL","AR","AZ","CA","CO","CT","DC","DE","FL","GA","HI","IA","ID","IL","IN","KS","KY","LA","MA","MD","ME","MI","MN","MO","MS","MT","NC","ND","NE","NH","NJ","NM","NV","NY","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VA","VT","WA","WI","WV","WY"] },
+            "dlNumber": { "type": "text" },
+            "stateFiling": { "type": "dropdown", "options": ["None","SR22"] },
+            "matureDriverCourse": { "type": "date" },
+            "addViolations": { "type": "checkbox" },
+            "military": { "type": "checkbox" },
+            "email": { "type": "text" },
+            "cellPhone.areaCode": { "type": "text" },
+            "cellPhone.exchange": { "type": "text" },
+            "cellPhone.number": { "type": "text" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "vehicles",
+      "title": "Vehicles (InsuredAuto.aspx)",
+      "automationStep": "vehicles",
+      "fields": [
+        {
+          "key": "vehicles",
+          "label": "Vehicles",
+          "type": "array",
+          "required": true,
+          "itemSchema": {
+            "modelYear": { "type": "text" },
+            "vin": { "type": "text" },
+            "make": { "type": "dropdown", "options": ["ACUR","ALFA","ASTO","AUDI","BENT","BMW","BUGA","BUIC","CADI","CHEV","CHRY","DODG","FERR","FIAT","FORD","FRHT","GENS","GLBL","GMC","GPMC","HOND","HYUN","INFI","JAGU","JEEP","KARM","KIA","LAMO","LNDR","LEXS","LINC","LOTU","MASE","MAZD","MCLA","MERZ","MNNI","MITS","NISS","PORS","RAM","ROL","SMRT","SUBA","TESL","TOYT","VOLK","VOLV","THTI"] },
+            "model": { "type": "text" },
+            "modelName": { "type": "text" },
+            "modelCode": { "type": "text" },
+            "style": { "type": "text" },
+            "trim": { "type": "text" },
+            "trimCode": { "type": "text" },
+            "bodyStyle": { "type": "text" },
+            "ownershipStatus": { "type": "dropdown", "options": ["FIN","LSE","OWN"] },
+            "vehicleType": { "type": "dropdown", "options": ["PPA","UTIL","RV","NAMN"] },
+            "primaryUse": { "type": "dropdown", "options": ["Artisan","Business","Pleasure/Commute"] },
+            "antiTheft": { "type": "dropdown", "options": ["None","Factory-Installed AT & Recov Disc","Recovery Device"] },
+            "inStorage": { "type": "checkbox" },
+            "garagingState": { "type": "dropdown", "options": ["AK","AL","AR","AZ","CA","CO","CT","DC","DE","FL","GA","HI","IA","ID","IL","IN","KS","KY","LA","MA","MD","ME","MI","MN","MO","MS","MT","NC","ND","NE","NH","NJ","NM","NV","NY","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VA","VT","WA","WI","WV","WY"] },
+            "garagingZip": { "type": "text" },
+            "garagingZip2": { "type": "text" },
+            "settlementOption": { "type": "dropdown", "options": ["ACV","ACVOEM","Replace","ReplaceOEM"] },
+            "annualMileage": { "type": "number" },
+            "originalOwner": { "type": "checkbox" },
+            "titleLength": { "type": "dropdown", "options": ["1","3","6","9"] },
+            "brandedTitle": { "type": "checkbox" },
+            "accident": { "type": "checkbox" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "underwriting",
+      "title": "Underwriting (Underwriting.aspx)",
+      "automationStep": "underwriting",
+      "fields": [
+        { "key": "underwriting.priorCarrier", "label": "Prior Carrier", "type": "dropdown", "required": false, "options": ["0","540","380"] },
+        { "key": "underwriting.monthsWithPrior", "label": "Months With Prior", "type": "dropdown", "required": false, "options": ["0","179","330","1050","1100"] },
+        { "key": "underwriting.priorBI", "label": "Prior BI", "type": "text", "required": false },
+        { "key": "underwriting.priorExpDate", "label": "Prior Exp Date", "type": "date", "required": false },
+        { "key": "underwriting.residenceStatus", "label": "Residence Status", "type": "dropdown", "required": true, "options": ["HCO","MHO","Rent","Other"] },
+        { "key": "underwriting.inAgencyTransfer", "label": "In-Agency Transfer", "type": "checkbox", "required": false },
+        { "key": "underwriting.goPaperless", "label": "Go Paperless", "type": "checkbox", "required": false },
+        { "key": "underwriting.multiPolicy", "label": "Multi-Policy", "type": "dropdown", "required": false, "options": ["0","1","2","3","8"] },
+        { "key": "underwriting.prohibitedRisk", "label": "Prohibited Risk", "type": "checkbox", "required": false },
+        { "key": "underwriting.rideSharing", "label": "Ride Sharing", "type": "checkbox", "required": false },
+        { "key": "underwriting.insuranceFraud", "label": "Insurance Fraud", "type": "checkbox", "required": false },
+        { "key": "underwriting.notListedHousehold", "label": "Not Listed Household", "type": "checkbox", "required": false },
+        { "key": "underwriting.notListedVehicle", "label": "Not Listed Vehicle", "type": "checkbox", "required": false },
+        { "key": "underwriting.rentersInterest", "label": "Renters Interest", "type": "checkbox", "required": false }
+      ]
+    },
+    {
+      "id": "coverages",
+      "title": "Coverages (CoveragesF.aspx)",
+      "automationStep": "coverages",
+      "fields": [
+        { "key": "coverages.termMonths", "label": "Term Months", "type": "dropdown", "required": false, "options": ["6","12"] },
+        { "key": "coverages.payMethod", "label": "Pay Method", "type": "dropdown", "required": false, "options": ["D","AS","AC"] },
+        { "key": "coverages.payPlan", "label": "Pay Plan", "type": "dropdown", "required": false, "options": ["7076","7077","7078","6904","6900"] },
+        { "key": "coverages.bi", "label": "BI", "type": "dropdown", "required": false, "options": ["-1","25/50","50/100","100/300","250/500","300/300","500/500"] },
+        { "key": "coverages.pd", "label": "PD", "type": "dropdown", "required": false, "options": ["-1","25","50","100","300","500"] },
+        { "key": "coverages.med", "label": "Medical Payments", "type": "dropdown", "required": false, "options": ["-1","500","1000","2000","5000","10000"] },
+        { "key": "coverages.umuimbi", "label": "UM/UIM BI", "type": "dropdown", "required": false, "options": ["-1","25/50","50/100","100/300","250/500","300/300","500/500"] },
+        { "key": "coverages.add", "label": "ADD", "type": "dropdown", "required": false, "options": ["-1","5000 Any Family Member in Household","5000 Named Insured","10000 Any Family Member in Household","10000 Named Insured","15000 Any Family Member in Household","15000 Named Insured","50000 Any Family Member in Household","50000 Named Insured"] },
+        { "key": "coverages.accidentForgiveness", "label": "Accident Forgiveness", "type": "checkbox", "required": false },
+        {
+          "key": "coverages.vehicles",
+          "label": "Per-Vehicle Coverages",
+          "type": "array",
+          "required": false,
+          "itemSchema": {
+            "comp": { "type": "dropdown", "options": ["-1","0","100","250","500","1000","2500"] },
+            "coll": { "type": "dropdown", "options": ["-1","100","250","500","1000","2500"] },
+            "rent": { "type": "dropdown", "options": ["-1","15","20","25","SureDrive"] },
+            "tow": { "type": "dropdown", "options": ["-1","35","50","75"] },
+            "cust": { "type": "text" },
+            "ppmx": { "type": "checkbox" },
+            "dimDed": { "type": "checkbox" }
+          }
+        }
+      ]
+    }
+  ]
+}

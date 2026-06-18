@@ -567,6 +567,27 @@
           "required": true
         },
         {
+          "key": "underwriting.lossCause",
+          "label": "Cause of Loss",
+          "type": "dropdown",
+          "required": true,
+          "options": [
+            "Water",
+            "Fire",
+            "Smoke (no fire)",
+            "Wind",
+            "Hail",
+            "Lightning",
+            "Theft",
+            "Liability - Property Damage",
+            "All other property"
+          ],
+          "conditionalOn": {
+            "key": "underwriting.lossesLastFiveYears",
+            "notValue": "0"
+          }
+        },
+        {
           "key": "underwriting.ownershipMonth",
           "label": "Ownership Month",
           "type": "text",

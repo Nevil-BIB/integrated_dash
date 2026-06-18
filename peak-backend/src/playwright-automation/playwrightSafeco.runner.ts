@@ -81,6 +81,7 @@ type SafecoUnderwriting = {
   insuranceCancelled: "Yes" | "No";
   insuranceCancellationExplanation?: string;
   lossesLastFiveYears: string;
+  lossCause?: string;
   ownershipMonth: string;
   ownershipYear: string;
   hasOtherSafecoPolicy?: "Yes" | "No";
@@ -501,6 +502,7 @@ function normalizeSafecoPayload(raw: unknown): SafecoPayload {
       "insuranceDetails.cancelDeclineDetails",
     ),
     lossesLastFiveYears: pickString("underwriting.lossesLastFiveYears", "insuranceDetails.numberOfLosses5Years") ?? "0",
+    lossCause: pickString("underwriting.lossCause"),
     ownershipMonth: pickString("underwriting.ownershipMonth") ?? defaultOwnershipMonth,
     ownershipYear: pickString("underwriting.ownershipYear") ?? defaultOwnershipYear,
     hasOtherSafecoPolicy: pickYesNo("underwriting.hasOtherSafecoPolicy"),
@@ -1231,6 +1233,19 @@ async function ensureUnderwritingSectionReady(page: Page): Promise<void> {
   await clickContinue(page).catch(() => undefined);
 }
 
+function getDwellingStartSelectors(): string[] {
+  return [
+    'label[for="PolicyDwellingOutdatedElectricalYNY"]',
+    'label[for="PolicyDwellingOutdatedElectricalYNN"]',
+    "#PolicyDwellingOutdatedElectricalYNY",
+    "#PolicyDwellingOutdatedElectricalYNN",
+    'input[name="PolicyDwellingOutdatedElectricalYN"]',
+    '[id*="OutdatedElectrical"]',
+    "#PolicyDwellingInCitySuburbDistrict",
+    "#PolicyDwellingRoofingRenovationType",
+  ];
+}
+
 async function advanceFromUnderwriting(page: Page): Promise<"applicant" | "losses" | "dwelling"> {
   const applicantSelectors = [
     "#PolicyDwellingApplicantFirstName",
@@ -1244,7 +1259,7 @@ async function advanceFromUnderwriting(page: Page): Promise<"applicant" | "losse
     "input[name='PolicyDwellingLossesYN']",
     "input[name='PolicyLossesYN']",
   ];
-  const dwellingSelectors = ['label[for="PolicyDwellingOutdatedElectricalYNY"]'];
+  const dwellingSelectors = getDwellingStartSelectors();
   const all = [...applicantSelectors, ...lossSelectors, ...dwellingSelectors];
 
   const marker = await advanceUntilAnyVisible(page, all, 3);
@@ -2359,7 +2374,12 @@ function parseLossDetails(raw: string | undefined): { date?: string; amount?: st
   };
 }
 
-async function fillLossDetailFields(page: Page, rawLossText: string | undefined, lossCount: number): Promise<void> {
+async function fillLossDetailFields(
+  page: Page,
+  rawLossText: string | undefined,
+  lossCount: number,
+  explicitCause: string | undefined,
+): Promise<void> {
   if (lossCount <= 0) return;
   const detailReady = await waitForAnyVisible(
     page,
@@ -2376,7 +2396,7 @@ async function fillLossDetailFields(page: Page, rawLossText: string | undefined,
 
   const dateValue = parsed.date ?? formatTodayPlusDays(-365);
   const amountValue = parsed.amount ?? "1000";
-  const causeLabel = parsed.causeLabel ?? "All other property";
+  const causeLabel = explicitCause?.trim() || parsed.causeLabel || "All other property";
   const causeValue = toLossCauseOptionValue(causeLabel);
 
   await fillRequiredField(
@@ -3072,7 +3092,18 @@ export async function runSafecoPlaywright(
       page,
       ["PolicyDwellingCourseConstructionYN", "PolicyDwellingCourseConstruction", "PolicyDwellingUnderConstructionYN"],
       payload.underwriting.underConstruction,
-    );
+    ).catch(async () => {
+      const ok = await clickYesNoByQuestionText(
+        page,
+        /under construction|course of construction|currently under construction/i,
+        payload.underwriting.underConstruction,
+      ).catch(() => false);
+      if (!ok) {
+        throw new Error(
+          `[Safeco] Could not select required field: Under Construction (${payload.underwriting.underConstruction})`,
+        );
+      }
+    });
     if (payload.underwriting.underConstruction === "Yes") {
       if (payload.underwriting.constructionCompletedWithin12Months) {
         await clickYesNo(page, ["PolicyDwellingConstructionCompletedYN"], payload.underwriting.constructionCompletedWithin12Months);
@@ -3342,7 +3373,7 @@ export async function runSafecoPlaywright(
         "input[name='PolicyDwellingLossesYN']",
         "input[name='PolicyLossesYN']",
       ];
-      const dwellingStartSelectors = ['label[for="PolicyDwellingOutdatedElectricalYNY"]'];
+      const dwellingStartSelectors = getDwellingStartSelectors();
       if (postUnderwritingStage !== "losses") {
         await advanceUntilAnyVisible(page, [...deferredLossSelectors, ...dwellingStartSelectors], 3);
       }
@@ -3352,15 +3383,32 @@ export async function runSafecoPlaywright(
         // On deferred losses screens, some variants need Y/N first, others go straight to details.
         await selectLossesYesNoRequired(page, lossesAnswer).catch(() => false);
         await setLossCountIfPresent(page, normalizedLossCount).catch(() => undefined);
-        await fillLossDetailFields(page, payload.underwriting.lossesLastFiveYears, Number(normalizedLossCount));
+        await fillLossDetailFields(
+          page,
+          payload.underwriting.lossesLastFiveYears,
+          Number(normalizedLossCount),
+          payload.underwriting.lossCause,
+        );
         lossesHandled = true;
-        await advanceUntilVisible(page, 'label[for="PolicyDwellingOutdatedElectricalYNY"]', 2);
+        await advanceUntilAnyVisible(page, getDwellingStartSelectors(), 2);
       }
     }
 
     updateStep("safeco_dwelling_information");
-    await advanceUntilVisible(page, 'label[for="PolicyDwellingOutdatedElectricalYNY"]', 2);
-    await clickYesNo(page, ["PolicyDwellingOutdatedElectricalYN"], payload.dwellingInformation.outdatedElectrical);
+    await advanceUntilAnyVisible(page, getDwellingStartSelectors(), 2);
+    await clickYesNo(page, ["PolicyDwellingOutdatedElectricalYN"], payload.dwellingInformation.outdatedElectrical)
+      .catch(async () => {
+        const ok = await clickYesNoByQuestionText(
+          page,
+          /outdated electrical|electrical system/i,
+          payload.dwellingInformation.outdatedElectrical,
+        ).catch(() => false);
+        if (!ok) {
+          throw new Error(
+            `[Safeco] Could not select required field: Outdated Electrical (${payload.dwellingInformation.outdatedElectrical})`,
+          );
+        }
+      });
     await selectByLabelOrValue(
       page,
       "#PolicyDwellingInCitySuburbDistrict",
